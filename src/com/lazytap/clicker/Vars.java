@@ -62,6 +62,14 @@ public final class Vars {
         if (k != null && !k.isEmpty()) map.put(k, v == null ? "" : v);
     }
 
+    /**
+     * 删掉一个变量（v2.6.0：子脚本传参用——父脚本没这个变量时，
+     * 子脚本跑完要把它清掉，别让参数残留在父脚本里看着像真的）
+     */
+    void del(String k) {
+        if (k != null) map.remove(k);
+    }
+
     /** 当前变量快照，给界面看运行时状态用 */
     JSONArray snapshot() {
         JSONArray a = new JSONArray();

@@ -136,6 +136,11 @@ public class F {
         ok("find 读 id（v2.4.0 控件 id）", findRead != null && findRead.contains("id"));
         ok("find 读 desc（v2.4.0 内容描述）", findRead != null && findRead.contains("desc"));
         ok("find 读 re（v2.4.0 正则）", findRead != null && findRead.contains("re"));
+        // v2.6.0：find 命中把坐标记进 lastX/lastY —— 只找不点的动作模式也能拿到 {{lastX}}
+        // 只认行首的真调用：把调用注释掉（而不是删掉）也算丢，别让断言被注释糊弄过去
+        String findCase = block(src, src.indexOf("case \"find\":"));
+        ok("find 命中回填 lastX/lastY（rememberHit）",
+                Pattern.compile("^\\s*rememberHit\\(", Pattern.MULTILINE).matcher(findCase).find());
         ok("execIf 也认这三个新条件", has(engine, "if", "id") && has(engine, "if", "desc")
                 && has(engine, "if", "re"));
         // 条件侧的检查两边不对称：「能填但不读」看 f，「在读但没入口」看 def，两边都得有
@@ -159,7 +164,7 @@ public class F {
         // 应用内的「更新日志」曾经停更在 v1.4.0，后面七个版本用户都看不到。
         // 这里钉一条：发新版时必须同步 app.js 里的 CHANGELOG 第一条。
         String top = firstVer(js);
-        ok("应用内更新日志的第一条就是当前版本", "2.5.0".equals(top), "现在是 " + top);
+        ok("应用内更新日志的第一条就是当前版本", "2.6.0".equals(top), "现在是 " + top);
 
         System.out.println(fails == 0 ? "  —— 全通过" : "  —— 失败 " + fails + " 项");
         if (fails > 0) System.exit(1);
@@ -291,6 +296,7 @@ public class F {
         addMethod(out, src, "execSet", "set");
         addMethod(out, src, "execMath", "math");
         addMethod(out, src, "execCmpVar", "cmpVar");
+        addMethod(out, src, "execSubScript", "runSub");
         addMethod(out, src, "checkCond", "cond");
         // region() 读的是区域字段（rx/ry/rw/rh/pct），所有「有区域」的动作都算读到
         Set<String> reg = reads(methodBlock(src, "int[] region("), 'a');

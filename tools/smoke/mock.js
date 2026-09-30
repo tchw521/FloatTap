@@ -30,7 +30,18 @@ const MOCK_SRC = `() => {
       actions: [], vars: [],
       code: 'await sleep(2000);\\nfor (var i = 0; i < 5; i++) {\\n'
         + "  var p = await findColor('#FF6B35', { sim: 92 });\\n"
-        + '  if (p) await click(p.x, p.y);\\n}\\n' }
+        + '  if (p) await click(p.x, p.y);\\n}\\n' },
+    // v2.6.0：子脚本冒烟用的两块料——母本调子流程，传参 JSON 落盘必须是字符串
+    { id: 'a6', name: '带子脚本的母本', icon: '📦', tone: 2,
+      actions: [
+        { t: 'runSub', name: '签到子流程', args: '{"n":3}', d: 300 },
+        { t: 'click', x: 100, y: 200, d: 200 }
+      ] },
+    { id: 'a7', name: '签到子流程', icon: '🧩', tone: 3,
+      actions: [
+        { t: 'wait', ms: 500, d: 0 },
+        { t: 'set', k: 'ret', v: 'ok-{{n}}', d: 100 }
+      ] }
   ];
   const triggers = [
     { id: 't1', kind: 'time', script: 'a1', on: true, hh: 9, mm: 0 },

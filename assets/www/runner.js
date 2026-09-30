@@ -129,27 +129,66 @@
 
   // ---------------- 找文字 ----------------
 
-  /** 找文字并点它。opt: {contains, index, timeout, click, clickable} */
+  /** 找文字并点它。opt: {id, desc, re, contains, index, timeout, click, clickable}
+   *  v2.6.0：id / desc / re 与「找文字」动作表单同款 —— id 填 ok 或 com.x:id/ok，
+   *  re 是在文字里搜的正则（不用加 ^$），desc 是内容描述。都留空＝老样子 */
   function tapText(text, opt) {
     opt = opt || {};
     return call({ t: 'find', s: String(text == null ? '' : text),
+      id: String(opt.id || ''), desc: String(opt.desc || ''), re: String(opt.re || ''),
       contains: opt.contains !== false, click: opt.click !== false,
       clickable: !!opt.clickable, index: n(opt.index, 1),
       timeout: opt.timeout == null ? 3000 : opt.timeout,
       d: opt.d == null ? 300 : opt.d });
   }
 
-  /** 屏幕上有没有这段字 */
+  /** 屏幕上有没有这段字。opt: {id, desc, re, contains, index, clickable} */
   function hasText(text, opt) {
     opt = opt || {};
-    return call({ t: 'if', m: 'text', s: String(text == null ? '' : text), contains: opt.contains !== false, p: '', d: 0 })
+    return call({ t: 'if', m: 'text', s: String(text == null ? '' : text),
+      id: String(opt.id || ''), desc: String(opt.desc || ''), re: String(opt.re || ''),
+      contains: opt.contains !== false, clickable: !!opt.clickable, index: n(opt.index, 1),
+      p: '', d: 0 })
       .then(function (r) { return !!r.ok; });
+  }
+
+  /** 找文字但不点，立刻返回：命中给 {x, y}，没有给 null。opt 同 tapText 的查找部分 */
+  function findText(text, opt) {
+    opt = opt || {};
+    return call({ t: 'find', s: String(text == null ? '' : text),
+      id: String(opt.id || ''), desc: String(opt.desc || ''), re: String(opt.re || ''),
+      contains: opt.contains !== false, click: false,
+      clickable: !!opt.clickable, index: n(opt.index, 1),
+      timeout: 0, d: 0 })
+      .then(function (r) { return r.ok ? { x: r.x, y: r.y } : null; });
+  }
+
+  /** 等文字出现（超时前反复找）：命中给 {x, y}，超时给 null。opt: {timeout(默认 10 秒), ...同 findText} */
+  function waitText(text, opt) {
+    opt = opt || {};
+    return call({ t: 'find', s: String(text == null ? '' : text),
+      id: String(opt.id || ''), desc: String(opt.desc || ''), re: String(opt.re || ''),
+      contains: opt.contains !== false, click: false,
+      clickable: !!opt.clickable, index: n(opt.index, 1),
+      timeout: opt.timeout == null ? 10000 : opt.timeout, d: 0 })
+      .then(function (r) { return r.ok ? { x: r.x, y: r.y } : null; });
   }
 
   /** 当前前台是不是这个 App */
   function hasApp(pkg) {
     return call({ t: 'if', m: 'pkg', p: pkg || '', s: '', d: 0 })
       .then(function (r) { return !!r.ok; });
+  }
+
+  /** 跑另一个脚本（按名字），等它跑完才继续。args 传对象，子脚本里用 {{名字}} 读；
+   *  子脚本往变量里写的值父脚本接着用（这就是回值）。返回 {ok, steps, x, y} */
+  function runSub(name, args) {
+    return call({ t: 'runSub', name: String(name == null ? '' : name),
+      args: args == null ? '' : JSON.stringify(args), d: 0 })
+      .then(function (r) {
+        return { ok: !!r.ok, steps: r.steps || 0,
+          x: (r.x == null ? null : r.x), y: (r.y == null ? null : r.y) };
+      });
   }
 
   // ---------------- 图色 ----------------
@@ -266,6 +305,7 @@
     longClick: longClick, swipe: swipe, randomClick: randomClick, multi: multi,
     key: key, input: input, launch: launch,
     tapText: tapText, hasText: hasText, hasApp: hasApp,
+    findText: findText, waitText: waitText, runSub: runSub,
     findColor: findColor, findImage: findImage, cmpColor: cmpColor,
     setVar: setVar, getVar: getVar, count: count,
     rand: rand, now: now, screen: screen, log: log, toast: toast, stop: stop,

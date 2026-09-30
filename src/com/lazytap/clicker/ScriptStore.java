@@ -118,6 +118,19 @@ public final class ScriptStore {
         return null;
     }
 
+    /**
+     * v2.6.0：「子脚本」动作按名字找脚本（用户在表单里选的是名字，不是 id）。
+     * 同名取第一个；重名本来就会被导入逻辑自动改名，正常只有一条。
+     */
+    public static JSONObject findByName(String name) {
+        if (name == null || name.isEmpty()) return null;
+        for (int i = 0; i < scripts.length(); i++) {
+            JSONObject o = scripts.optJSONObject(i);
+            if (o != null && name.equals(o.optString("name"))) return o;
+        }
+        return null;
+    }
+
     public static JSONArray recording() {
         return recording;
     }

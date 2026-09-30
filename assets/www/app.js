@@ -118,7 +118,10 @@
     cmpVar: { n: '比变量', e: '⚖️', f: [['l', '左边', 'var'], ['op', '怎么比', 'sel:cmpop'], ['r', '右边', 'var'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { l: 'n', op: '>=', r: '3', go: 0, els: 0, d: 100 } },
     cond: { n: '条件判断', e: '🧠', f: [['go', '全部/满足 → 跳到第几步'], ['els', '不满足 → 跳到第几步'], ['d', '之后等待 ms']], def: { mode: 0, n: 1, cs: [], rep: 0, repGap: 800, repMax: 10, go: 0, els: 0, d: 100 } },
     // 分组：把一批动作装一起，指定怎么跑。子动作不走步号跳转，但「收工」「重来一轮」会往上传
-    group: { n: '动作分组', e: '🗂', f: [['name', '分组名（给自己看的）', 'text'], ['mode', '怎么跑', 'sel:gmode'], ['d', '之后等待 ms']], def: { name: '', mode: 0, acts: [], d: 100 } }
+    group: { n: '动作分组', e: '🗂', f: [['name', '分组名（给自己看的）', 'text'], ['mode', '怎么跑', 'sel:gmode'], ['d', '之后等待 ms']], def: { name: '', mode: 0, acts: [], d: 100 } },
+    // v2.6.0：跑另一个脚本并等它跑完。传参写 JSON 对象，子脚本里 {{名字}} 直接读；
+    // 子脚本往变量里写的值父脚本接着用。name 的下拉在表单渲染里特判 sel:scripts（动态脚本清单）
+    runSub: { n: '子脚本', e: '📦', f: [['name', '要跑的脚本', 'sel:scripts'], ['args', '传参 JSON，如 {"n":1}（可留空）', 'text'], ['d', '之后等待 ms']], def: { name: '', args: '', d: 300 } }
   };
   var CMP_OP = { '==': '等于', '!=': '不等于', '>': '大于', '>=': '大于等于', '<': '小于', '<=': '小于等于' };
   // 条件类型（v2.0.0）：跟自动精灵一样按「条件」组织，不是一个动作只挂一个判断
@@ -202,6 +205,8 @@
         var gm = GMODE_N[a.mode|0] || '按顺序';
         return (a.name ? '「' + a.name + '」' : '') + n + ' 个动作 · ' + gm;
       }
+      // v2.6.0：子脚本摘要把传参也露出来，列表里一眼看出给子脚本塞了什么
+      case 'runSub': return '跑子脚本「' + (a.name || '未选') + '」' + (a.args ? ' · 传参 ' + a.args : '');
     }
     return '';
   }
@@ -807,6 +812,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.6.0</div>动作列表新增<b>子脚本</b>：把常用流程单独存成一个脚本，别的脚本里一条动作就能调它，还能<b>传参</b>（填 JSON，如 {"n":1}，子脚本里用 {{n}} 引用）；子脚本里写的变量跑完还在，父脚本接着就能读，算它的回值。子脚本里的「收工／重来」只结束子脚本、不带走父脚本；套娃最多 5 层，A 调 B、B 调 A 的死循环进不来。JS 脚本也补齐了查找：<b>tapText／hasText</b> 支持控件 id、内容描述、正则选项，新增 <b>findText</b>（只找不点，立刻回坐标）、<b>waitText</b>（等文字出现再往下走）、<b>runSub</b>（JS 里也能调子脚本）。找文字／找色／找图命中后坐标都会记进 {{lastX}}／{{lastY}}。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.5.0</div>运行能<b>暂停</b>了：悬浮条多了「⏸ 暂停 / ▶ 恢复」按钮，暂停后跑到哪一步记住哪一步，恢复从断点继续、不丢进度；等待中的动作也能立刻暂停，暂停期间不吃等待时长。音量键升级三态：<b>短按</b>切换暂停/恢复、<b>长按</b>才是急停，没跑脚本时音量归系统管。磁贴、悬浮球、日志面板都能看出暂停态。JS 脚本模式暂不支持暂停（短按就是急停），下版再补。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.4.0</div>找节点补上三个新条件：<b>控件 id</b>（填 ok 或 com.xxx:id/ok 都行）、<b>正则</b>（按正则在文字里搜，不用加 ^$）、<b>内容描述</b>（desc）。多个条件全部满足才算命中；描述留空时沿用老样子（文字或描述任一命中），填了才改成「文字归文字、描述归描述」。顺手修掉两个老毛病：只填 id 不填文字以前会被当成「没填」直接判不成立；一屏里第 41 个往后永远取不到（「第几个」填大了就静默失效）。新增 52 条节点匹配单测。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.3.0</div>静默失效大扫除：「等待」动作真的会等了（以前写 5 秒只等 0.3 秒）；「找文字／找色／找图」的超时改成真轮询，不再被硬夹成 2 秒；表单补上「只看能点的按钮」「采样间隔」「超时」等一批引擎一直在读却没入口的开关；双击/长按/随机点新建时不再默认点 (0,0)；按键在低版本上按不动时会明说原因；JS 脚本开始认「开始前等几秒」和「循环几次」。新增字段对账测试，以后表单和引擎对不上会立刻变红。',
@@ -1066,9 +1072,12 @@
     ['key(名字)', 'back / home / recents / lock ...'],
     ['input(文字)', '往当前输入框打字'],
     ['launch(包名)', '打开某个 App'],
-    ['tapText(文字)', '找文字并点它'],
-    ['hasText(文字)', '屏幕上有没有这段字 → true/false'],
+    ['tapText(文字, 选项)', '找文字并点它；选项可带 {id, desc, re, index, timeout}'],
+    ['hasText(文字, 选项)', '屏幕上有没有这段字 → true/false（选项同上）'],
+    ['findText(文字, 选项)', '只找不点，立刻返回 → {x,y} 或 null'],
+    ['waitText(文字, 选项)', '等文字出现（默认最多 10 秒）→ {x,y} 或 null'],
     ['hasApp(包名)', '当前是不是这个 App → true/false'],
+    ['runSub(脚本名, 参数)', '跑另一个脚本并等它跑完 → {ok, steps}；参数是对象，子脚本里 {{名字}} 读，子脚本写的变量父脚本接着用'],
     ['findColor(颜色)', '找颜色 → {x,y,sim} 或 null'],
     ['findImage(名字)', '找模板图 → {x,y,sim} 或 null'],
     ['cmpColor(x,y,颜色)', '某点颜色对不对 → true/false'],
@@ -1273,8 +1282,14 @@
           + '</div>';
       } else if (kind && kind.indexOf('sel:') === 0) {
         var optKey = kind.slice(4);
-        var opts = OPTS[optKey] || [];
-        h += '<label class="f"><span>' + label + '</span><select data-field="' + key + '">';
+        // v2.6.0：sel:scripts 是动态清单——从脚本列表现取。
+        // 排除自己（自调用死循环）和 JS 脚本（当不了子脚本，引擎会拒）
+        var opts = optKey === 'scripts'
+          ? (S.scripts || []).filter(function (x) { return x.id !== S.editId && x.kind !== 'js'; })
+              .map(function (x) { return [x.name, x.name]; })
+          : (OPTS[optKey] || []);
+        h += '<label class="f"><span>' + label + '</span><select data-field="' + key + '">'
+          + '<option value=""' + (!a[key] ? ' selected' : '') + '>（选一个）</option>';
         for (var z = 0; z < opts.length; z++) {
           h += '<option value="' + esc(opts[z][0]) + '"' + (String(a[key]) === String(opts[z][0]) ? ' selected' : '') + '>' + esc(opts[z][1]) + '</option>';
         }
@@ -1282,6 +1297,9 @@
         if (optKey === 'tpls') {
           if (!opts.length) h += '<div class="tiny" style="margin:-4px 0 6px">还没有模板图，先去「设置 → 图色模板」截一张存起来。</div>';
           else h += '<button class="btn ghost wide" style="margin:0 0 4px" data-act="goTpl">🖼 管理模板图</button>';
+        }
+        if (optKey === 'scripts' && !opts.length) {
+          h += '<div class="tiny" style="margin:-4px 0 6px">还没有别的动作脚本（JS 脚本当不了子脚本），先回脚本页新建一个。</div>';
         }
       } else if (kind === 'key') {
         h += '<label class="f"><span>' + label + '</span><select data-field="' + key + '">';
@@ -2122,7 +2140,8 @@
     if (kind.indexOf('sel:') === 0) return true;
     // v2.4.0：id / desc / re 一律按文本存。上面 kind 标了 'text' 其实已经接住了，
     // 这里再补一道是防以后有人手滑删掉 kind —— 被当成数字的话 desc 填 3.0 会存成 3
-    return key === 's' || key === 'p' || key === 'id' || key === 'desc' || key === 're';
+    // v2.6.0：args（子脚本传参 JSON）同理，{"n":1} 不能被转成别的
+    return key === 's' || key === 'p' || key === 'id' || key === 'desc' || key === 're' || key === 'args';
   }
 
   function saveAct(i) {

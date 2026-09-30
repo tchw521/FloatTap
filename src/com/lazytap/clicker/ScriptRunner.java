@@ -14,7 +14,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -63,6 +65,11 @@ public final class ScriptRunner {
     /** v2.0.0 多条件系统：同一轮里多个图色条件共用一张截图 */
     private Bitmap shotBmp;
     private long shotAt;
+
+    /** v2.6.0：子脚本调用（传参 / 深度守卫的纯逻辑在 SubCall，这里管执行） */
+    private final SubCall sub = new SubCall();
+    /** v2.6.0：本步是 runSub 时子脚本实际跑的步数（-1 = 本步不是子脚本），runOne 组装回值用 */
+    private int subSteps = -1;
 
     ScriptRunner() {
         thread.start();
@@ -376,7 +383,7 @@ public final class ScriptRunner {
                 int k = rnd.nextInt(acts.length());
                 JSONObject one = acts.optJSONObject(k);
                 log("分组" + tag + "：随机挑了第 " + (k + 1) + " 个来跑");
-                return one == null ? 0 : runSub(svc, one);
+                return one == null ? 0 : execOne(svc, one);
             }
             default:
                 log("分组" + tag + "：按顺序跑（" + acts.length() + " 个）");
@@ -389,7 +396,7 @@ public final class ScriptRunner {
             rs.gate();                                  // 暂停挂起，恢复从当前子步继续
             if (!rs.isRunning()) return 0;
             JSONObject sub = acts.optJSONObject(i);
-            int j = runSub(svc, sub);
+            int j = execOne(svc, sub);
             if (j == JUMP_END || j == JUMP_LOOP) return j;   // 只有这两种要往上传
         }
         return 0;
@@ -411,7 +418,7 @@ public final class ScriptRunner {
                 paths.add(p);
                 continue;
             }
-            int j = runSub(svc, sub);          // 不是手势，照常跑
+            int j = execOne(svc, sub);          // 不是手势，照常跑
             if (j == JUMP_END || j == JUMP_LOOP) return j;
         }
         if (paths.isEmpty()) return 0;
@@ -431,7 +438,7 @@ public final class ScriptRunner {
     }
 
     /** 跑一个子动作，把异常兜住——分组里一个动作出错不该把整条脚本带走 */
-    private int runSub(TapService svc, JSONObject sub) {
+    private int execOne(TapService svc, JSONObject sub) {
         if (sub == null) return 0;
         try {
             JSONObject b = vars.bind(sub);
@@ -543,6 +550,8 @@ public final class ScriptRunner {
                 return execFindColor(svc, a);
             case "findImage":
                 return execFindImage(svc, a);
+            case "runSub":
+                return execSubScript(a);
             case "multi": {
                 String mode = a.optString("m", "twoTap");
                 float cx = (float) a.optDouble("x", 0);
@@ -655,6 +664,10 @@ public final class ScriptRunner {
                     Rect r = new Rect();
                     node.getBoundsInScreen(r);
                     log("找到 " + q.describe() + " @" + r.centerX() + "," + r.centerY());
+                    // v2.6.0：find 也记命中坐标——JS 的 tapText/findText 能拿到 {x,y}，
+                    // 动作模式里 find 之后也能 {{lastX}} {{lastY}}（跟找色找图对齐）
+                    rememberHit(r.centerX(), r.centerY(), 0);
+                    lastBool = true;
                     if (doClick) svc.tap(r.centerX(), r.centerY(), 60);
                     node.recycle();
                 } else {
@@ -724,6 +737,106 @@ public final class ScriptRunner {
         if ("spread".equals(m)) return "双指张开";
         if ("twoLong".equals(m)) return "双指按住";
         return "双指齐点";
+    }
+
+    /**
+     * v2.6.0：跑一个子脚本（按名字），阻塞到它跑完再继续父脚本。
+     *
+     * 就在同一根引擎线程里把子脚本的动作逐条执行——暂停闸口 / 停止检查 /
+     * {{}} 插值全都是现成的。传参做法：把 args 的 k/v 短暂写进变量表
+     * （子脚本里直接 {{名字}} 就能读），跑完恢复原值，不污染父脚本的变量；
+     * 子脚本对变量的写入则**留在表里**，父脚本用 {{名字}} 或 getVar 接着读
+     * ——这就是「回值」：参数进变量、结果也走变量，跟整个引擎一个心智模型。
+     *
+     * 子脚本内部的 go/els 是它**自己的步号**（在这个小循环里消化），
+     * 「收工 / 重来一轮」则当作「子脚本跑完」往上传，不会把父脚本带停。
+     */
+    private int execSubScript(JSONObject a) {
+        if (!sub.enter()) {
+            logE("子脚本套娃超过 " + SubCall.MAX_DEPTH + " 层，多半是互相调用绕圈了，这条不跑");
+            lastBool = false;
+            return 0;
+        }
+        try {
+            String name = a.optString("name", "");
+            if (name.isEmpty()) {
+                logE("子脚本没选名字");
+                lastBool = false;
+                return 0;
+            }
+            if (name.equals(currentName())) {
+                logE("「" + name + "」不能调自己，那是个死循环");
+                lastBool = false;
+                return 0;
+            }
+            JSONObject target = ScriptStore.findByName(name);
+            if (target == null) {
+                logE("没有叫「" + name + "」的脚本（改名了？）");
+                lastBool = false;
+                return 0;
+            }
+            if ("js".equals(target.optString("kind", ""))) {
+                logW("「" + name + "」是 JS 脚本，还不能当子脚本（它会等引擎、引擎等它，死锁）");
+                lastBool = false;
+                return 0;
+            }
+            JSONArray acts = target.optJSONArray("actions");
+            if (acts == null || acts.length() == 0) {
+                logE("「" + name + "」是空的，先给它加两步");
+                lastBool = false;
+                return 0;
+            }
+            JSONObject args = SubCall.parse(a.optString("args", ""));
+            if (args == null) {
+                logE("传参 JSON 写错了：「" + a.optString("args", "") + "」，这条先不跑");
+                lastBool = false;
+                return 0;
+            }
+            LinkedHashMap<String, String> kv = SubCall.flat(args);
+            LinkedHashMap<String, String> saved = new LinkedHashMap<>();
+            for (Map.Entry<String, String> e : kv.entrySet()) {
+                saved.put(e.getKey(), vars.get(e.getKey()));   // null = 父脚本原本没有这个变量
+                vars.put(e.getKey(), e.getValue());
+            }
+            log("跑子脚本「" + name + "」" + (kv.isEmpty() ? "" : "（传参 " + kv.size() + " 个）"));
+
+            int n = acts.length(), i = 0, steps = 0;
+            boolean complete = true;
+            while (i < n) {
+                rs.gate();                              // 父脚本暂停时，子脚本也挂在这
+                if (rs.isStopped()) { complete = false; break; }
+                JSONObject raw = acts.optJSONObject(i);
+                if (raw == null) { i++; continue; }
+                JSONObject b = vars.bind(raw);          // 子脚本动作也吃插值，能读到传进来的参数
+                int j;
+                try {
+                    j = exec(b);
+                } catch (Throwable t) {
+                    logE("子脚本第 " + (i + 1) + " 步出错：" + t.getMessage());
+                    j = 0;
+                }
+                steps++;
+                subSteps = steps;                       // runOne 组装回值时带走
+                if (j == JUMP_END || j == JUMP_LOOP) break;   // 收工/重来＝子脚本跑完，别把父脚本带走
+                if (j > 0) i = j - 1;                   // 子脚本自己的步号（1 起）
+                else i++;
+                if (i < n && rs.isRunning()) {
+                    long wait = delayAfter(b);          // 每步的「之后等待」照主循环一样算
+                    if (wait > 0) rs.sleep(Math.min(wait, 30000L));
+                }
+            }
+            // 传参清理：父脚本原本有的恢复原值，原本没有的删掉
+            for (Map.Entry<String, String> e : saved.entrySet()) {
+                if (e.getValue() == null) vars.del(e.getKey());
+                else vars.put(e.getKey(), e.getValue());
+            }
+            lastBool = complete;                        // runOne 统一回传 ok
+            log(complete ? "子脚本「" + name + "」跑完 " + steps + " 步"
+                         : "子脚本「" + name + "」中途停下");
+            return 0;
+        } finally {
+            sub.exit();
+        }
     }
 
     /** 条件判断：找到/没找到 各跳一步；0 表示顺着走 */
@@ -1321,6 +1434,10 @@ public final class ScriptRunner {
                     }
                     r.put("jump", j);
                     r.put("ok", lastBool ? 1 : 0);
+                    if (subSteps >= 0) {           // v2.6.0：runSub 的回值带上子脚本实际步数
+                        r.put("steps", subSteps);
+                        subSteps = -1;
+                    }
                     if (lastHit != null) {
                         r.put("x", lastHit[0]);
                         r.put("y", lastHit[1]);
