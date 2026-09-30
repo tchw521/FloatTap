@@ -37,10 +37,13 @@ public final class ScriptRunner {
     // 引擎线程在写（log），界面/WebView 桥线程在读（JsApi 拼状态 JSON）——
     // 用并发容器，否则遍历时增删会 ConcurrentModificationException，
     // 异常被上层吞掉后整个状态面板会缺一块
-    private final List<String> logs = new CopyOnWriteArrayList<>();
+    private final List<LogLine> logs = new CopyOnWriteArrayList<>();
 
     private volatile boolean running;
     private volatile String currentId = "";
+    /** v2.2.0：运行浮层与日志面板要显示「第几步 / 共几步」，这两个值给外部读 */
+    private volatile int progCur, progTotal;
+    private volatile long runStartAt;
     private boolean jitter;
     private int repeatLeft;
     private volatile int loopLeft;
@@ -84,13 +87,40 @@ public final class ScriptRunner {
         return currentId;
     }
 
-    public List<String> logs() {
+    public List<LogLine> logs() {
         return logs;
     }
 
+    /** 面板展示用：只取最后 n 行，转成 JSON 对象（带时间戳和级别） */
+    public JSONArray logsJson(int n) {
+        JSONArray a = new JSONArray();
+        int start = Math.max(0, logs.size() - Math.max(1, n));
+        for (int i = start; i < logs.size(); i++) a.put(logs.get(i).json());
+        return a;
+    }
+
+    /** 日志面板的「清空」按钮 */
+    public void clearLogs() {
+        logs.clear();
+        if (listener != null) listener.on("log", "");
+    }
+
     private void log(String s) {
-        logs.add(s);
-        if (logs.size() > 200) logs.remove(0);
+        log(s, LogLine.INFO);
+    }
+
+    private void logW(String s) {
+        log(s, LogLine.WARN);
+    }
+
+    private void logE(String s) {
+        log(s, LogLine.ERR);
+    }
+
+    private void log(String s, int lv) {
+        if (s == null) return;
+        logs.add(new LogLine(s, lv));
+        while (logs.size() > LogLine.CAP) logs.remove(0);
         if (listener != null) listener.on("log", s);
     }
 
@@ -99,15 +129,43 @@ public final class ScriptRunner {
         log(s);
     }
 
+    /** 给外部写一句警示（日志面板标黄） */
+    public void warn(String s) {
+        logW(s);
+    }
+
     private void status(String s, String extra) {
         if (listener != null) listener.on("status", s + "|" + currentId + "|" + extra);
+    }
+
+    // ---------- v2.2.0：运行浮层要读的进度 ----------
+
+    public boolean hasProgress() {
+        return progTotal > 0;
+    }
+
+    public int progressCur() {
+        return progCur;
+    }
+
+    public int progressTotal() {
+        return progTotal;
+    }
+
+    /** 这一轮跑了多少毫秒，浮层上显示「已跑 12s」 */
+    public long elapsed() {
+        return runStartAt <= 0 ? 0 : System.currentTimeMillis() - runStartAt;
+    }
+
+    public String currentName() {
+        return script == null ? "" : script.optString("name", "未命名");
     }
 
     public boolean start(JSONObject sc) {
         if (sc == null) return false;
         AccessibilityService svc = TapService.get();
         if (svc == null) {
-            log("无障碍服务没开，跑不动");
+            logE("无障碍服务没开，跑不动");
             return false;
         }
         stop();
@@ -115,7 +173,7 @@ public final class ScriptRunner {
         currentId = sc.optString("id");
         actions = sc.optJSONArray("actions");
         if (actions == null || actions.length() == 0) {
-            log("脚本是空的，加两步再来");
+            logE("脚本是空的，加两步再来");
             return false;
         }
         jitter = sc.optBoolean("jitter", false);
@@ -138,6 +196,9 @@ public final class ScriptRunner {
         log("开跑：" + sc.optString("name", "未命名"));
         status("running", sc.optString("name", ""));
         loopStart = System.currentTimeMillis();
+        runStartAt = loopStart;
+        progTotal = actions.length();
+        progCur = 0;
         int delay = sc.optInt("startDelay", 0); // 开始前先等几秒，方便切到目标 App
         if (delay > 0) {
             log("先等 " + delay + " 秒，你快切过去");
@@ -149,11 +210,16 @@ public final class ScriptRunner {
     }
 
     public void stop() {
+        boolean was = running;
         running = false;
         repeatLeft = 0;
         if (h != null) h.removeCallbacksAndMessages(null);
+        if (was) log("停下了");   // 手动刹车也要留痕，不然日志里看不出是自己停的还是跑完的
         if (listener != null && !currentId.isEmpty()) status("stopped", "");
         currentId = "";
+        progCur = 0;
+        progTotal = 0;
+        runStartAt = 0;
         // 截图缓存别跨脚本留着：那是一整张屏幕的 Bitmap（十几 MB），
         // 这里只丢引用不 recycle —— 它可能正是 Capture.last()，界面预览还在用
         shotBmp = null;
@@ -173,20 +239,24 @@ public final class ScriptRunner {
 
     private void step() {
         if (!running) return;
+        progTotal = actions.length();
         if (index >= actions.length()) {
             if (loopLeft == -1 || loopLeft > 1) {
                 if (loopLeft > 1) loopLeft--;
                 index = 0;
+                progCur = 0;
                 vars.loop++;                 // {{loop}} 跟着轮次走
                 log("第 " + ((System.currentTimeMillis() - loopStart) / 1000 + 1) + " 秒：再来一轮");
                 h.postDelayed(this::step, Math.max(50, (long) (300 * speed())));
                 return;
             }
             running = false;
+            progCur = progTotal;
             log("跑完收工，手指保住了");
             status("stopped", "done");
             return;
         }
+        progCur = Math.min(index + 1, progTotal);   // 运行浮层读它显示「第几步」
         JSONObject raw = actions.optJSONObject(index);
         if (raw == null) {
             index++;
@@ -205,7 +275,7 @@ public final class ScriptRunner {
         try {
             jump = exec(a);
         } catch (Throwable t) {
-            log("动作出错：" + t.getMessage());
+            logE("动作出错：" + t.getMessage());
         }
         if (jump == JUMP_END) {          // 直接收工
             running = false;
@@ -238,7 +308,7 @@ public final class ScriptRunner {
     private int execGroup(TapService svc, JSONObject a) {
         JSONArray acts = a.optJSONArray("acts");
         if (acts == null || acts.length() == 0) {
-            log("这个分组是空的，跳过");
+            logW("这个分组是空的，跳过");
             return 0;
         }
         int mode = a.optInt("mode", G_SEQ);
@@ -295,7 +365,7 @@ public final class ScriptRunner {
         if (paths.isEmpty()) return 0;
         int max = TapService.maxStrokes();
         if (paths.size() > max) {
-            log("同时派的手势有 " + paths.size() + " 条，超过系统上限 " + max + " 条，只发前 " + max + " 条");
+            logW("同时派的手势有 " + paths.size() + " 条，超过系统上限 " + max + " 条，只发前 " + max + " 条");
             paths = paths.subList(0, max);
         }
         long ms = 0;
@@ -314,7 +384,7 @@ public final class ScriptRunner {
         try {
             return exec(vars.bind(sub));
         } catch (Throwable t) {
-            log("分组里的动作出错：" + t.getMessage());
+            logE("分组里的动作出错：" + t.getMessage());
             return 0;
         }
     }
@@ -498,14 +568,14 @@ public final class ScriptRunner {
                     if (doClick) svc.tap(r.centerX(), r.centerY(), 60);
                     node.recycle();
                 } else if (timeout > 0) {
-                    log("没找到「" + text + "」，再等等");
+                    logW("没找到「" + text + "」，再等等");
                     h.postDelayed(() -> {
                         if (!running) return;
                         try {
                             TapService s2 = TapService.get();
                             if (s2 == null) {
                                 running = false;
-                                log("服务没了，不跑了");
+                                logE("服务没了，不跑了");
                                 status("stopped", "fail");
                                 return;
                             }
@@ -518,17 +588,17 @@ public final class ScriptRunner {
                                 log("这回找到了「" + text + "」");
                             } else if (script != null && script.optBoolean("stopOnFail", false)) {
                                 running = false;
-                                log("还是没找到「" + text + "」，不跑了");
+                                logE("还是没找到「" + text + "」，不跑了");
                                 status("stopped", "fail");
                             } else {
-                                log("还是没找到「" + text + "」，接着走");
+                                logW("还是没找到「" + text + "」，接着走");
                             }
                         } catch (Throwable t2) {
-                            log("找文字出错：" + t2.getMessage());
+                            logE("找文字出错：" + t2.getMessage());
                         }
                     }, Math.min(timeout, 2000));
                 } else {
-                    log("没找到「" + text + "」，跳过");
+                    logW("没找到「" + text + "」，跳过");
                     if (script != null && script.optBoolean("stopOnFail", false)) {
                         running = false;
                         status("stopped", "fail");
@@ -538,7 +608,7 @@ public final class ScriptRunner {
                 return 0;
             }
             default:
-                log("未知动作 " + t);
+                logE("未知动作 " + t);
         }
         return 0;
     }
@@ -808,7 +878,7 @@ public final class ScriptRunner {
             if (a.optBoolean("click", true)) svc.tap(hit[0], hit[1], 60);
             return jump(a, true);
         }
-        log("没找到颜色 " + a.optString("c", ""));
+        logW("没找到颜色 " + a.optString("c", ""));
         return jump(a, false);
     }
 
@@ -835,7 +905,7 @@ public final class ScriptRunner {
             if (a.optBoolean("click", true)) svc.tap(hit[0], hit[1], 60);
             return jump(a, true);
         }
-        log("没找到图「" + name + "」");
+        logW("没找到图「" + name + "」");
         return jump(a, false);
     }
 

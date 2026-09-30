@@ -46,6 +46,11 @@ public class MainActivity extends Activity {
         Bus.setSink((type, data) -> push(type, data));
         ScriptRunner.get().setListener((type, data) -> {
             push(type, data);
+            // v2.2.0：开跑时把运行浮层拉起来（不显示球）
+            if ("status".equals(type) && data != null && data.startsWith("running")
+                    && FloatService.get() == null && Prefs.getBool("runOverlay", true)) {
+                FloatService.startRun(this);
+            }
             if (FloatService.get() != null) FloatService.get().refresh();
         });
     }

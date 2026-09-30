@@ -275,6 +275,11 @@
     }
     if (swapped) { page.classList.remove('swap'); void page.offsetWidth; page.classList.add('swap'); }
     bindDrag();
+    // 日志页每次重绘都滚到最新一条，不然新日志全在下面看不见
+    if (S.tab === 'mine' && S.sub === 'log') {
+      var lbox = $('.log');
+      if (lbox) lbox.scrollTop = lbox.scrollHeight;
+    }
 
     if (keep) {
       var n = document.getElementById(keep.id);
@@ -606,15 +611,57 @@
       + '<button class="btn ghost grow" data-act="exportAll">📤 导出全部</button></div></div>';
   }
 
+  // 日志级别：0 普通 / 1 提醒 / 2 出错（和内核 LogLine 里的常量对齐）
+  function logLvOf(l) {
+    if (l && typeof l.lv === 'number') return l.lv;
+    // 老格式（纯字符串）按关键词猜一个，升级后不至于全变白
+    var m = (typeof l === 'string' ? l : (l && l.m) || '');
+    if (/出错|失败|崩|异常|未知/.test(m)) return 2;
+    if (/没开|没找到|找不到|跳过|中断|没有|超时|不跑了/.test(m)) return 1;
+    return 0;
+  }
+  function logText(l) {
+    return (typeof l === 'string') ? l : ((l && l.m) || '');
+  }
+
   function viewLog() {
     var st = S.st || {};
     var logs = st.log || [];
+    var min = S.logMin || 0;                 // 0 全部 / 1 只看提醒和出错
+    var shown = logs.filter(function (l) { return logLvOf(l) >= min; });
+    var nErr = 0, nWarn = 0;
+    for (var i = 0; i < logs.length; i++) {
+      var lv = logLvOf(logs[i]);
+      if (lv === 2) nErr++; else if (lv === 1) nWarn++;
+    }
+
     var h = '<div class="hero"><div class="hi">运行状态</div>'
-      + '<div class="ht">' + (st.running ? '🏃 正在跑' : '💤 空闲中') + '</div>'
-      + '<div class="row"><button class="btn warn grow" data-act="stop">■ 停止</button>'
-      + '<button class="btn ghost" data-act="logRefresh">刷新</button></div></div>';
-    h += '<div class="card"><div class="sec">最近输出</div>'
-      + '<div class="log">' + (logs.length ? logs.map(esc).join('\n') : '（暂无日志，跑一次就有了）') + '</div></div>';
+      + '<div class="ht">' + (st.running ? '🏃 正在跑 · ' + esc(st.runName || '')
+        + (st.prog ? ' · 第 ' + esc(st.prog) + ' 步' : '') : '💤 空闲中') + '</div>'
+      + '<div class="row">'
+      + (st.running ? '<button class="btn warn grow" data-act="stop">■ 停止</button>' : '')
+      + '<button class="btn ghost" data-act="logRefresh">刷新</button></div>'
+      + '<div class="row" style="margin-top:8px">'
+      + '<button class="btn sm ghost grow" data-act="logFilter">' + (min ? '✓ 只看提醒' : '全部') + '</button>'
+      + '<button class="btn sm ghost grow" data-act="logCopy">复制</button>'
+      + '<button class="btn sm ghost grow" data-act="logClear">清空</button></div>'
+      + (logs.length ? '<div class="tiny" style="margin-top:8px">共 ' + logs.length + ' 条'
+        + (nErr ? ' · <b style="color:var(--warn)">' + nErr + ' 条出错</b>' : '')
+        + (nWarn ? ' · ' + nWarn + ' 条提醒' : '') + '</div>' : '')
+      + '</div>';
+
+    h += '<div class="card"><div class="sec">最近输出</div><div class="log">';
+    if (!shown.length) {
+      h += '<div class="lg empty">' + (logs.length ? '（这一档没有，切回「全部」看看）' : '（暂无日志，跑一次就有了）') + '</div>';
+    } else {
+      h += shown.map(function (l) {
+        var lv = logLvOf(l);
+        var c = (l && l.c) || '';
+        return '<div class="lg lv' + lv + '">' + (c ? '<span class="lt">' + esc(c) + '</span>' : '')
+          + esc(logText(l)) + '</div>';
+      }).join('');
+    }
+    h += '</div></div>';
     return h;
   }
 
@@ -660,6 +707,16 @@
       + '<div class="kv"><span>触点录制（抓屏幕坐标）</span>' + sw('touchRecord', p.touchRecord !== false) + '</div>'
       + '<div class="tiny" style="margin-top:6px">触点录制不依赖界面节点，游戏、自绘界面也录得上；需要悬浮窗权限。关掉后只走无障碍事件。</div>'
       + '</div>';
+
+    h += '<div class="card"><div class="sec">运行中的小帮手</div>'
+      + '<div class="kv"><span>运行浮层</span>' + sw('runOverlay', p.runOverlay !== false) + '</div>'
+      + '<div class="kv"><span>音量键急停</span>' + sw('volStop', !!p.volStop) + '</div>'
+      + '<div class="tiny" style="margin-top:8px">'
+      + '<b>运行浮层</b>：脚本一跑起来就贴一根状态条，写着脚本名、跑到第几步、已经跑了多久；'
+      + '能拖到任意位置（位置会记住），点一下把界面叫回来，✕ 临时收起、下一轮自己回来。'
+      + '<br><b>音量键急停</b>：脚本跑着的时候按音量 + / − 直接刹车，'
+      + '这一下不会去调音量。默认关着，免得你只是想调个音量却把脚本停了。'
+      + '</div></div>';
 
     h += '<div class="card"><div class="sec">配色</div><div class="themes">';
     for (var tk in THEMES) {
@@ -1740,7 +1797,9 @@
       case 'pickTpl': useTemplate(+el.dataset.i); break;
       case 'newJs': newJsScript(); break;
       case 'market': S.tab = 'market'; S.editId = null; render(); break;
-      case 'mineGo': S.tab = 'mine'; S.sub = el.dataset.k; render(); break;
+      // 进子页就顺手拉一次数据：不然日志页要等下一次 1.2s 轮询才更新，
+      // 刚切进来那一下看到的是上一次的旧日志
+      case 'mineGo': S.tab = 'mine'; S.sub = el.dataset.k; refreshAll(); break;
       case 'mineBack': S.sub = null; render(); break;
       case 'mktGet': mktGet(+el.dataset.i); break;
       case 'share': sheetShare(id); break;
@@ -1895,6 +1954,25 @@
         break;
       case 'tplDel': ok(call('delTpl', el.dataset.v)); refreshAll(); sheet(viewTpls()); break;
       case 'logRefresh': refreshAll(); break;
+      case 'logFilter':
+        S.logMin = (S.logMin || 0) ? 0 : 1;
+        render();
+        break;
+      case 'logClear':
+        ok(call('clearLogs'));
+        refreshAll();
+        toast('日志已清空');
+        break;
+      case 'logCopy': {
+        var ls = (S.st && S.st.log) || [];
+        if (!ls.length) { toast('还没有日志可复制'); break; }
+        var txt = ls.map(function (l) {
+          return ((l && l.c) ? l.c + '  ' : '') + logText(l);
+        }).join('\n');
+        ok(call('copyText', txt));
+        toast('日志已复制（' + ls.length + ' 条）');
+        break;
+      }
       case 'mode':
         ok(call('savePrefs', JSON.stringify({ mode: el.dataset.v })));
         S.prefs.mode = el.dataset.v;
@@ -1932,7 +2010,7 @@
         if (pk2 && ca) { pk2.value = ca.replace(/^"|"$/g, ''); toast('填上了：' + ca); }
         else toast('没读到前台应用');
         break;
-      case 'goTrig': S.tab = 'mine'; S.sub = 'trig'; render(); break;
+      case 'goTrig': S.tab = 'mine'; S.sub = 'trig'; refreshAll(); break;
       case 'theme':
         ok(call('savePrefs', JSON.stringify({ theme: el.dataset.v })));
         S.prefs.theme = el.dataset.v;
@@ -2231,6 +2309,7 @@
     if (type === 'recordAction') loadRec();
     else if (type === 'record') loadRec();
     else if (type === 'status' || type === 'resume') refreshAll();
+    else if (type === 'log' && S.tab === 'mine' && S.sub === 'log') refreshAll();
     else if (type === 'scripts') refreshAll();
     else if (type === 'cap') { refreshAll(); toast(data === 'ok' ? '截屏已授权' : '没拿到截屏授权'); }
     else if (type === 'js') {

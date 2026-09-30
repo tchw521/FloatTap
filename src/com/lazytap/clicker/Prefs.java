@@ -22,6 +22,10 @@ public final class Prefs {
             o.put("ballAlpha", 0.88f);  // 0.3 ~ 1
             o.put("ballX", -1);
             o.put("ballY", -1);
+            o.put("runX", -1);          // v2.2.0 运行浮层拖到最后的位置
+            o.put("runY", -1);
+            o.put("runOverlay", true);  // 脚本跑起来时显示可拖拽状态条
+            o.put("volStop", false);    // 音量键急停（默认关，免得调音量把脚本停了）
             o.put("speed", 1.0f);       // 动作节奏倍率，越小越快
             o.put("mode", "normal");    // normal | ball
             o.put("ballVisible", false);

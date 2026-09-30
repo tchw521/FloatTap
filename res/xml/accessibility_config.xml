@@ -6,6 +6,6 @@
     android:canPerformGestures="true"
     android:canRetrieveWindowContent="true"
     android:canRequestEnhancedWebAccessibility="true"
-    android:canRequestFilterKeyEvents="false"
+    android:canRequestFilterKeyEvents="true"
     android:notificationTimeout="80"
     android:settingsActivity="com.lazytap.clicker.MainActivity" />

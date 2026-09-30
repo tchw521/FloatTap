@@ -16,6 +16,7 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
+import android.view.KeyEvent;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -96,10 +97,21 @@ public class TapService extends AccessibilityService {
             info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
             info.flags |= AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS;
             info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+            // v2.2.0：音量键急停。要能收到按键必须带这个 flag，
+            // 而且 accessibility_config.xml 里的 android:canRequestFilterKeyEvents 得是 true；
+            // 少任何一个 onKeyEvent 一次都不会被调用 —— 不报错，纯粹静默失效，很难查。
+            // （API 34 起 AccessibilityServiceInfo.canRequestFilterKeyEvents 字段已移除，只能走 XML）
+            info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
             setServiceInfo(info);
         }
         ScriptRunner.get().setListener((type, data) -> {
             Bus.emit(type, data);
+            // v2.2.0：脚本一开跑就把运行浮层拉起来（不显示球），
+            // 起不来（后台启动受限 / 没悬浮窗权限）就当没这功能，不影响跑脚本
+            if ("status".equals(type) && data != null && data.startsWith("running")
+                    && FloatService.get() == null && Prefs.getBool("runOverlay", true)) {
+                FloatService.startRun(this);
+            }
             if (FloatService.get() != null) FloatService.get().refresh();
         });
         Bus.emit("service", "on");
@@ -126,6 +138,30 @@ public class TapService extends AccessibilityService {
     public boolean onUnbind(Intent intent) {
         instance = null;
         return super.onUnbind(intent);
+    }
+
+    /**
+     * v2.2.0：音量键当急停键 —— 手忙脚乱时不用满屏幕找停止按钮。
+     *
+     * <p>「有东西在跑」这条判断不能省：不然用户只是想调个音量，脚本就没了，
+     * 还以为手机坏了。开关默认关着，设置里打开才生效。
+     *
+     * <p>返回 true 表示这一下按键被我们吃了，系统不会跟着调音量；
+     * 其余情况一律交给 super，绝不多拦。
+     */
+    @Override
+    protected boolean onKeyEvent(KeyEvent event) {
+        boolean busy = ScriptRunner.get().isRunning() || JsEngine.get().isBusy();
+        if (HotKey.wantStop(event.getKeyCode(), HotKey.isDown(event.getAction()),
+                Prefs.getBool("volStop", false), busy)) {
+            ScriptRunner.get().stop();
+            JsEngine.get().stop();
+            ScriptRunner.get().note("按了" + HotKey.name(event.getKeyCode()) + "，急停");
+            Bus.emit("status", "stopped||vol");
+            if (FloatService.get() != null) FloatService.get().refresh();
+            return true;
+        }
+        return super.onKeyEvent(event);
     }
 
     private void measure() {

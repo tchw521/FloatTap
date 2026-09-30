@@ -19,7 +19,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # 把要测的源码剥掉 package 放到 out/ 下，测的是真代码
-for f in Expr Vars Share; do
+for f in Expr Vars Share LogLine HotKey; do
   sed 's/^package com\.lazytap\.clicker;//' "$SRC/$f.java" > "$OUT/$f.java"
 done
 
@@ -46,6 +46,14 @@ java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" G | tail -2
 echo "==> 分享码（S + 真实 Share）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/Share.java" S.java
 java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" S | tail -2
+
+echo "==> 运行日志（L + 真实 LogLine）"
+javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/LogLine.java" L.java
+java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" L | tail -2
+
+echo "==> 音量键急停（K + 真实 HotKey）"
+javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/HotKey.java" K.java
+java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" K | tail -2
 
 echo
 echo "==> 单测全部通过"

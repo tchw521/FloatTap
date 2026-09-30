@@ -49,9 +49,15 @@ echo "==> aapt2 链接并生成 R.java"
 
 echo "==> javac 编译"
 find "$ROOT/src" "$BUILD/gen" -name "*.java" > "$BUILD/sources.txt"
-javac -nowarn -encoding UTF-8 -source 11 -target 11 -Xlint:-options \
+# 编译失败必须立刻停：之前这里挂了 `|| true`，javac 报错也能一路走到打包，
+# 产出一个缺类的 APK，装上去点哪崩哪，而且看不出来是编译没过。
+if ! javac -nowarn -encoding UTF-8 -source 11 -target 11 -Xlint:-options \
   -classpath "$ANDROID_JAR" \
-  -d "$BUILD/obj" @"$BUILD/sources.txt" 2>&1 | grep -v "^注: " | tail -25 || true
+  -d "$BUILD/obj" @"$BUILD/sources.txt" > "$BUILD/javac.log" 2>&1; then
+  grep -v "^注: " "$BUILD/javac.log" | tail -30
+  echo "!! javac 编译失败，已中止（不会拿缺类的半成品去打包）" >&2
+  exit 1
+fi
 
 echo "==> d8 打 dex（开启瘦身）"
 "$D8" --lib "$ANDROID_JAR" --min-api 24 \

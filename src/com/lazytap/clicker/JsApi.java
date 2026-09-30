@@ -59,6 +59,28 @@ public final class JsApi {
         return "ok";
     }
 
+    /** v2.2.0：日志面板的「清空」 */
+    @JavascriptInterface
+    public String clearLogs() {
+        ScriptRunner.get().clearLogs();
+        return "ok";
+    }
+
+    /** v2.2.0：日志面板的「复制」。WebView 里 navigator.clipboard 不好使，走原生剪贴板 */
+    @JavascriptInterface
+    public String copyText(String s) {
+        if (s == null) s = "";
+        try {
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm == null) return "err:拿不到剪贴板";
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("lazytap", s));
+            return "ok";
+        } catch (Throwable t) {
+            return "err:" + t.getMessage();
+        }
+    }
+
     // ---------- JS 脚本模式（v1.7.0） ----------
 
     /** 跑一个 JS 脚本（脚本对象里带 code 字段） */
@@ -183,11 +205,10 @@ public final class JsApi {
                     || Prefs.getBool("recordingOn", false));
             o.put("touch", svc != null && svc.touchOn());
             o.put("ball", FloatService.get() != null && FloatService.get().ballShown());
-            JSONArray lg = new JSONArray();
-            java.util.List<String> ls = ScriptRunner.get().logs();
-            int start = Math.max(0, ls.size() - 60);
-            for (int i = start; i < ls.size(); i++) lg.put(ls.get(i));
-            o.put("log", lg);
+            o.put("log", ScriptRunner.get().logsJson(80));   // 带时间和级别，日志面板要着色
+            ScriptRunner r = ScriptRunner.get();
+            o.put("prog", r.hasProgress() ? (r.progressCur() + "/" + r.progressTotal()) : "");
+            o.put("runName", r.isRunning() ? r.currentName() : "");
             o.put("screen", screenInfo());
             o.put("vars", ScriptRunner.get().varSnapshot());   // 运行时变量值，调试用
             o.put("js", JsEngine.get().isBusy());              // JS 脚本在不在跑
