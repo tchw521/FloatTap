@@ -65,7 +65,10 @@ public final class JsApi {
             o.put("current", ScriptRunner.get().currentId());
             o.put("acc", TapService.enabled(c));
             o.put("overlay", overlayOk());
-            o.put("recording", TapService.get() != null && TapService.get().isRecording());
+            TapService svc = TapService.get();
+            o.put("recording", (svc != null && svc.isRecording())
+                    || Prefs.getBool("recordingOn", false));
+            o.put("touch", svc != null && svc.touchOn());
             o.put("ball", FloatService.get() != null && FloatService.get().ballShown());
             JSONArray lg = new JSONArray();
             java.util.List<String> ls = ScriptRunner.get().logs();
@@ -140,14 +143,14 @@ public final class JsApi {
 
     @JavascriptInterface
     public String recStart() {
-        if (!TapService.alive()) return "err:无障碍没开";
+        if (!TapService.alive()) return "err:无障碍服务没开，先去开启";
         TapService.get().startRecord();
         return "ok";
     }
 
     @JavascriptInterface
     public String recStop() {
-        if (!TapService.alive()) return "err:无障碍没开";
+        if (!TapService.alive()) return "err:无障碍服务没开";
         TapService.get().stopRecord();
         return "ok";
     }

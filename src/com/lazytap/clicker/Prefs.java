@@ -27,6 +27,8 @@ public final class Prefs {
             o.put("ballVisible", false);
             o.put("boot", false);
             o.put("autoRecordDelay", true); // 录制时自动插入等待
+            o.put("touchRecord", true);     // 触点录制（抓屏幕坐标，不依赖界面节点）
+            o.put("recordingOn", false);    // 录制中标记，服务重启后接着录
             o.put("vibrate", true);
             o.put("gTap", "");          // 悬浮球单击绑定的脚本 id
             o.put("gDouble", "");

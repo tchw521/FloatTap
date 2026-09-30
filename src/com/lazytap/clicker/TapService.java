@@ -11,6 +11,8 @@ import android.graphics.Path;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
@@ -98,6 +100,7 @@ public class TapService extends AccessibilityService {
         });
         Bus.emit("service", "on");
         Trigger.scheduleAll(this); // 服务活了，把定时触发器排上
+        resumeRecord();            // 之前在录制的话接着录
         if (FloatService.get() != null) FloatService.get().refresh();
     }
 
@@ -320,37 +323,217 @@ public class TapService extends AccessibilityService {
     }
 
     // ---------- 录制 ----------
+    // 两条通道：
+    //  A 无障碍事件 —— 能拿到界面节点时最准，但游戏 / 自绘 UI / WebView 常常不给节点；
+    //  B 触点捕获   —— 用一个 1×1 的透明悬浮窗监听屏幕触点，不依赖节点，任何界面都录得上。
+    //  B 生效时以 B 为准，A 只补充“开应用 / 输入文字”这类语义动作，避免重复。
 
-    private boolean recording;
-    private long lastEventTime;
-    private String lastPkg = "";
-    private String lastSig = "";
+    private volatile boolean recording;
+    private volatile long lastEventTime;
+    private volatile String lastPkg = "";
+    private volatile String lastSig = "";
+    private volatile boolean touchOn;      // 触点捕获是否真的生效
+    private volatile boolean touchConfirmed; // 捕获窗是否真的挂上了
+    private volatile long lastHint;        // 提示节流
+
+    private static final long TOUCH_IDLE = 300;   // 手指静止多久算一次操作结束
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private final Runnable flushRun = new Runnable() {
+        @Override
+        public void run() {
+            flushTouch();
+        }
+    };
+    private long touchStart, lastTouchT;
+    private float tx0, ty0, tx1, ty1;
+    private int touchN;
+    private boolean touchMoved;
 
     public boolean isRecording() {
         return recording;
     }
 
+    public boolean touchOn() {
+        return touchOn;
+    }
+
     public void startRecord() {
         ScriptStore.clearRecording();
         recording = true;
+        Prefs.put("recordingOn", true);
         lastEventTime = System.currentTimeMillis();
         lastPkg = "";
         lastSig = "";
+        resetTouch();
+        boolean t = false;
+        try {
+            t = Prefs.getBool("touchRecord", true) && startTouch();
+        } catch (Throwable ignored) {
+        }
+        touchOn = t;
+        ScriptRunner.get().note(t
+                ? "开始录制：触点捕获已开，任意界面都能录"
+                : "开始录制：触点捕获没开（需悬浮窗权限），只能录有节点的界面");
+        // 兜底：1.5 秒内捕获窗没真的挂上，就退回无障碍通道，绝不让两条通道同时哑火
+        if (t) {
+            touchConfirmed = false;
+            ui.postDelayed(() -> {
+                if (!recording) return;
+                if (!touchConfirmed) {
+                    touchOn = false;
+                    ScriptRunner.get().note("触点捕获没挂上，退回无障碍通道（只能录有节点的界面）");
+                    if (FloatService.get() != null) FloatService.get().refresh();
+                }
+            }, 1500);
+        }
         Bus.emit("record", "start");
         if (FloatService.get() != null) FloatService.get().refresh();
-        toast("开始录制，随便点，我看着呢");
+        uiToast("开始录制，随便点，我看着呢");
     }
 
     public void stopRecord() {
         recording = false;
+        Prefs.put("recordingOn", false);
+        ui.removeCallbacks(flushRun);
+        flushTouch();
+        touchOn = false;
+        FloatService fs = FloatService.get();
+        if (fs != null) {
+            fs.stopTouchCapture();
+            if (fs.touchOnly()) {
+                try {
+                    fs.stopSelf();
+                } catch (Throwable ignored) {
+                }
+            } else {
+                fs.refresh();
+            }
+        }
         Bus.emit("record", "stop");
-        if (FloatService.get() != null) FloatService.get().refresh();
-        toast("录完了，共 " + ScriptStore.recording().length() + " 步");
+        ScriptRunner.get().note("录完了，共 " + ScriptStore.recording().length() + " 步");
+        uiToast("录完了，共 " + ScriptStore.recording().length() + " 步");
     }
 
     public void toggleRecord() {
         if (recording) stopRecord();
         else startRecord();
+    }
+
+    /** 服务被系统重启后，接着录 */
+    private void resumeRecord() {
+        if (!Prefs.getBool("recordingOn", false)) return;
+        recording = true;
+        lastEventTime = System.currentTimeMillis();
+        resetTouch();
+        try {
+            touchOn = Prefs.getBool("touchRecord", true) && startTouch();
+        } catch (Throwable ignored) {
+            touchOn = false;
+        }
+        ScriptRunner.get().note("录制被系统打断，已接着录");
+        if (FloatService.get() != null) FloatService.get().refresh();
+    }
+
+    private boolean startTouch() {
+        if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) return false;
+        FloatService fs = FloatService.get();
+        if (fs != null) {
+            fs.startTouchCapture();
+            return true;
+        }
+        FloatService.startTouch(this);
+        return true;
+    }
+
+    /** 悬浮窗那边确认捕获窗真的加上了，才把通道 B 点亮 */
+    void setTouchActive(boolean on) {
+        if (on) touchConfirmed = true;
+        touchOn = on && recording;
+    }
+
+    private void resetTouch() {
+        touchN = 0;
+        touchMoved = false;
+        touchStart = 0;
+        lastTouchT = 0;
+        ui.removeCallbacks(flushRun);
+    }
+
+    /** 悬浮窗回调：屏幕上的一次触点（ACTION_OUTSIDE） */
+    static void onTouchSample(float x, float y, long t) {
+        TapService s = get();
+        if (s != null) s.touchSample(x, y, t);
+    }
+
+    private void touchSample(float x, float y, long t) {
+        if (!recording) return;
+        long now = t > 0 ? t : System.currentTimeMillis();
+        long dt = now - lastTouchT;
+        float sx = x - tx1, sy = y - ty1;
+        float step = (float) Math.sqrt(sx * sx + sy * sy);
+        // 同一次操作的判据：① 采样很密（滑动连报）② 间隔不长且每步位移不大
+        // ③ 手指按住不动（很多机型长按不再上报，用“原地 + 已经按住一会儿”续上）
+        boolean keep = touchN > 0 && (dt <= 60
+                || (dt <= TOUCH_IDLE && step <= 36)
+                || (step < 20 && (lastTouchT - touchStart) >= 400 && dt <= 900));
+        if (!keep) { // 新的一次操作
+            flushTouch();
+            tx0 = x;
+            ty0 = y;
+            touchStart = now;
+            touchN = 1;
+            touchMoved = false;
+        } else {
+            touchN++;
+            if (Math.abs(x - tx0) > 36 || Math.abs(y - ty0) > 36) touchMoved = true;
+        }
+        tx1 = x;
+        ty1 = y;
+        lastTouchT = now;
+        ui.removeCallbacks(flushRun);
+        ui.postDelayed(flushRun, TOUCH_IDLE);
+    }
+
+    /** 手指离开（或静止够久）→ 判定这一步是点 / 长按 / 滑动 */
+    private void flushTouch() {
+        if (touchN == 0) return;
+        touchN = 0;
+        long dur = Math.max(0, lastTouchT - touchStart);
+        float dx = tx1 - tx0, dy = ty1 - ty0;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        JSONObject a = new JSONObject();
+        try {
+            long gap = System.currentTimeMillis() - lastEventTime;
+            if (touchMoved && dist > 36) {
+                a.put("t", "swipe");
+                a.put("x1", Math.round(tx0));
+                a.put("y1", Math.round(ty0));
+                a.put("x2", Math.round(tx1));
+                a.put("y2", Math.round(ty1));
+                a.put("ms", Math.max(120, Math.min(3000, dur)));
+            } else if (dur >= 600) {
+                a.put("t", "long");
+                a.put("x", Math.round(tx0));
+                a.put("y", Math.round(ty0));
+                a.put("ms", Math.max(600, Math.min(3000, dur)));
+            } else {
+                a.put("t", "click");
+                a.put("x", Math.round(tx0));
+                a.put("y", Math.round(ty0));
+            }
+            a.put("d", autoDelay(gap));
+            a.put("note", "触点");
+        } catch (Exception ignored) {
+        }
+        push(a);
+    }
+
+    private void uiToast(String s) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            toast(s);
+        } else {
+            ui.post(() -> toast(s));
+        }
     }
 
     private void toast(String s) {
@@ -372,8 +555,24 @@ public class TapService extends AccessibilityService {
         if (!recording) return;
         if (type == AccessibilityEvent.TYPE_VIEW_CLICKED
                 || type == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED) {
+            boolean isLong = type == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED;
             AccessibilityNodeInfo src = event.getSource();
-            if (src == null) return;
+            if (touchOn) {
+                // 触点通道已经录下坐标，这里只借语义：把刚那一步改成长按
+                if (isLong && src != null) {
+                    Rect rl = new Rect();
+                    src.getBoundsInScreen(rl);
+                    src.recycle();
+                    if (rl.width() > 0 && rl.height() > 0) markLong(rl.centerX(), rl.centerY());
+                } else if (src != null) {
+                    src.recycle();
+                }
+                return;
+            }
+            if (src == null) {
+                hintNoNode();
+                return;
+            }
             Rect r = new Rect();
             src.getBoundsInScreen(r);
             src.recycle();
@@ -408,6 +607,31 @@ public class TapService extends AccessibilityService {
             } catch (Exception ignored) {
             }
             push(a);
+        } else if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED && !touchOn) {
+            // 触点通道不可用时的兜底：滚动事件只能知道方向与大致位置，记成一次滑动
+            AccessibilityNodeInfo src = event.getSource();
+            if (src == null) return;
+            Rect r = new Rect();
+            src.getBoundsInScreen(r);
+            src.recycle();
+            if (r.width() <= 0 || r.height() <= 0) return;
+            int cx = r.centerX(), cy = r.centerY();
+            int dx = event.getScrollX(), dy = event.getScrollY();
+            if (dx == 0 && dy == 0) return;
+            long gap = System.currentTimeMillis() - lastEventTime;
+            JSONObject a = new JSONObject();
+            try {
+                a.put("t", "swipe");
+                a.put("x1", cx + dx);
+                a.put("y1", cy + dy);
+                a.put("x2", cx);
+                a.put("y2", cy);
+                a.put("ms", 300);
+                a.put("d", autoDelay(gap));
+                a.put("note", "滚动");
+            } catch (Exception ignored) {
+            }
+            push(a);
         } else if (type == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
             CharSequence txt = event.getText() == null || event.getText().isEmpty()
                     ? null : event.getText().get(0);
@@ -430,6 +654,32 @@ public class TapService extends AccessibilityService {
             }
             push(a);
         }
+    }
+
+    /** 无障碍通道确认这是一次长按：把触点通道刚记下的那一步改成长按 */
+    private void markLong(int cx, int cy) {
+        JSONArray arr = ScriptStore.recording();
+        if (arr.length() == 0) return;
+        JSONObject last = arr.optJSONObject(arr.length() - 1);
+        if (last == null || !"click".equals(last.optString("t"))) return;
+        if (Math.abs(last.optInt("x", -9999) - cx) > 60) return;
+        if (Math.abs(last.optInt("y", -9999) - cy) > 60) return;
+        try {
+            last.put("t", "long");
+            last.put("ms", 800);
+        } catch (Exception ignored) {
+        }
+        ScriptStore.saveRecording(arr);
+        Bus.emit("recordAction", last.toString());
+        if (FloatService.get() != null) FloatService.get().refresh();
+    }
+
+    /** 拿不到节点时给个提示，别让用户以为录制坏了（4 秒最多一次） */
+    private void hintNoNode() {
+        long now = System.currentTimeMillis();
+        if (now - lastHint < 4000) return;
+        lastHint = now;
+        ScriptRunner.get().note("这个界面不给节点，坐标抓不到；开悬浮窗权限可用触点录制");
     }
 
     /** 录制时把真实操作间隔记下来，回放才像人 */

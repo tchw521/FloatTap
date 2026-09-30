@@ -82,6 +82,11 @@ public final class ScriptRunner {
         if (listener != null) listener.on("log", s);
     }
 
+    /** 给外部（服务 / 悬浮球）往日志页里写一句话 */
+    public void note(String s) {
+        log(s);
+    }
+
     private void status(String s, String extra) {
         if (listener != null) listener.on("status", s + "|" + currentId + "|" + extra);
     }
@@ -245,7 +250,11 @@ public final class ScriptRunner {
                 } else if (t.equals("double")) {
                     final float fx = x, fy = y;
                     svc.tap(fx, fy, 60);
-                    h.postDelayed(() -> svc.tap(fx, fy, 60), 110);
+                    h.postDelayed(() -> {
+                        if (!running) return;
+                        TapService s2 = TapService.get();
+                        if (s2 != null) s2.tap(fx, fy, 60);
+                    }, 110);
                     log("戳戳 (" + (int) x + "," + (int) y + ")");
                 } else {
                     long ms = a.optLong("ms", 800);
@@ -308,16 +317,30 @@ public final class ScriptRunner {
                     log("没找到「" + text + "」，再等等");
                     h.postDelayed(() -> {
                         if (!running) return;
-                        AccessibilityNodeInfo n2 = svc.findNode(text, contains, clickableOnly, nth);
-                        if (n2 != null) {
-                            Rect r2 = new Rect();
-                            n2.getBoundsInScreen(r2);
-                            if (doClick) svc.tap(r2.centerX(), r2.centerY(), 60);
-                            n2.recycle();
-                        } else if (script != null && script.optBoolean("stopOnFail", false)) {
-                            running = false;
-                            log("还是没找到「" + text + "」，不跑了");
-                            status("stopped", "fail");
+                        try {
+                            TapService s2 = TapService.get();
+                            if (s2 == null) {
+                                running = false;
+                                log("服务没了，不跑了");
+                                status("stopped", "fail");
+                                return;
+                            }
+                            AccessibilityNodeInfo n2 = s2.findNode(text, contains, clickableOnly, nth);
+                            if (n2 != null) {
+                                Rect r2 = new Rect();
+                                n2.getBoundsInScreen(r2);
+                                if (doClick) s2.tap(r2.centerX(), r2.centerY(), 60);
+                                n2.recycle();
+                                log("这回找到了「" + text + "」");
+                            } else if (script != null && script.optBoolean("stopOnFail", false)) {
+                                running = false;
+                                log("还是没找到「" + text + "」，不跑了");
+                                status("stopped", "fail");
+                            } else {
+                                log("还是没找到「" + text + "」，接着走");
+                            }
+                        } catch (Throwable t2) {
+                            log("找文字出错：" + t2.getMessage());
                         }
                     }, Math.min(timeout, 2000));
                 } else {
@@ -380,10 +403,18 @@ public final class ScriptRunner {
         if (times > 0 && cur >= times) {
             if (a.optBoolean("resetAfter", true)) counters.put(k, 0);
             int go = a.optInt("go", 0);
-            if (go == -1) go = JUMP_END;
-            else if (go == -2) go = JUMP_LOOP;
-            log("够 " + times + " 次了" + (go > 0 ? "，跳第 " + go + " 步" : "，收工"));
-            return go > 0 ? go : JUMP_END;
+            // 与全局一致：0=下一步，-1=收工，-2=重来一轮，>0=跳第 N 步
+            if (go == -1) {
+                log("够 " + times + " 次了，收工");
+                return JUMP_END;
+            }
+            if (go == -2) {
+                log("够 " + times + " 次了，重来一轮");
+                return JUMP_LOOP;
+            }
+            if (go > 0) log("够 " + times + " 次了，跳第 " + go + " 步");
+            else log("够 " + times + " 次了，继续往下");
+            return go;
         }
         return 0;
     }

@@ -43,6 +43,7 @@ public class FloatService extends Service {
     public static final String A_SHOW = "show";
     public static final String A_HIDE = "hide";
     public static final String A_STOP = "stop";
+    public static final String A_TOUCH = "touch";
 
     private static volatile FloatService instance;
 
@@ -55,6 +56,8 @@ public class FloatService extends Service {
     private WindowManager.LayoutParams ballParams;
     private View panel;
     private View bar;
+    private View touchView;   // 1×1 抓触点的小窗
+    private boolean touchOnly; // 只为录制而活着
     private TextView barCount;
     private final Handler h = new Handler(Looper.getMainLooper());
     private int clicks;
@@ -74,7 +77,11 @@ public class FloatService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String a = intent == null ? A_SHOW : intent.getAction();
-        if (A_HIDE.equals(a)) hideBall();
+        if (A_TOUCH.equals(a)) {
+            // 只为录制抓触点而起来，不显示球；录完自己收工
+            if (ball == null) touchOnly = true;
+            startTouchCapture();
+        } else if (A_HIDE.equals(a)) hideBall();
         else if (A_STOP.equals(a)) {
             ScriptRunner.get().stop();
             toast("已刹车");
@@ -94,6 +101,21 @@ public class FloatService extends Service {
         Intent i = new Intent(c, FloatService.class);
         i.setAction(A_HIDE);
         c.startService(i);
+    }
+
+    /** 录制用：只为抓触点起服务。必须在前台（用户刚点按钮）时调用 */
+    public static void startTouch(Context c) {
+        Intent i = new Intent(c, FloatService.class);
+        i.setAction(A_TOUCH);
+        try {
+            if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i);
+            else c.startService(i);
+        } catch (Throwable t) {
+            try {
+                c.startService(i);
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     private void startInForeground() {
@@ -265,6 +287,61 @@ public class FloatService extends Service {
         t.setLayoutParams(lp);
         t.setOnClickListener(v -> r.run());
         return t;
+    }
+
+    // ---------- 触点捕获（录制通道 B） ----------
+
+    public boolean touchOnly() {
+        return touchOnly && ball == null;
+    }
+
+    /** 1×1 透明窗 + WATCH_OUTSIDE_TOUCH：不挡操作，却能拿到屏幕触点的绝对坐标 */
+    public void startTouchCapture() {
+        if (touchView != null) {
+            if (TapService.get() != null) TapService.get().setTouchActive(true);
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(this)) {
+            if (TapService.get() != null) TapService.get().setTouchActive(false);
+            return;
+        }
+        View v = new View(this);
+        int type = Build.VERSION.SDK_INT >= 26
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(1, 1, type,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+                PixelFormat.TRANSPARENT);
+        lp.gravity = Gravity.TOP | Gravity.LEFT;
+        lp.x = 0;
+        lp.y = 0;
+        v.setOnTouchListener((vv, ev) -> {
+            if (ev.getAction() == MotionEvent.ACTION_OUTSIDE) {
+                TapService.onTouchSample(ev.getRawX(), ev.getRawY(), ev.getEventTime());
+            }
+            return false;
+        });
+        try {
+            wm.addView(v, lp);
+            touchView = v;
+            if (TapService.get() != null) TapService.get().setTouchActive(true);
+        } catch (Throwable t) {
+            touchView = null;
+            if (TapService.get() != null) TapService.get().setTouchActive(false);
+        }
+    }
+
+    public void stopTouchCapture() {
+        if (touchView != null) {
+            try {
+                wm.removeView(touchView);
+            } catch (Throwable ignored) {
+            }
+            touchView = null;
+        }
+        if (TapService.get() != null) TapService.get().setTouchActive(false);
     }
 
     private void hideRecordBar() {
@@ -485,6 +562,7 @@ public class FloatService extends Service {
 
     @Override
     public void onDestroy() {
+        stopTouchCapture();
         hideBall();
         instance = null;
         super.onDestroy();

@@ -123,6 +123,7 @@
     var st = jcall('status'); if (st) S.st = st;
     var p = jcall('prefs'); if (p) S.prefs = p;
     var t = jcall('triggers'); if (t) S.triggers = t;
+    loadRec();          // 回到前台时把录制结果一起拉回来，不然会显示“还没录到”
     applyTheme();
     render();
   }
@@ -411,16 +412,31 @@
   // ---------- 录制 ----------
   function viewRecord() {
     var on = S.st && S.st.recording;
+    var st = S.st || {};
     var h = '<div class="hero"><div class="hi">操作录制</div>'
       + '<div class="ht">' + (on ? '🔴 正在录制…' : '让我看看你怎么点的') + '</div>'
       + '<div class="muted">开启后去别的 App 随便点，屏幕顶部会出现录制条（停止 / 加 2 秒等待 / 撤销上一步）。</div>'
       + '<div class="row" style="margin-top:10px">'
       + '<button class="btn grow ' + (on ? 'warn' : 'ok') + '" data-act="rec">' + (on ? '⏹ 停止录制' : '⏺ 开始录制') + '</button>'
       + '<button class="btn ghost" data-act="recRefresh">刷新</button></div></div>';
+    // 开工前把必要条件摆出来，省得录了半天一场空
+    if (!st.acc) {
+      h += '<div class="card warn"><b>无障碍没开</b><br><span class="tiny">录制和点击都靠它。</span>'
+        + '<div class="row" style="margin-top:8px"><button class="btn sm ok" data-act="acc">去开启</button></div></div>';
+    }
+    if (!st.overlay) {
+      h += '<div class="card warn"><b>悬浮窗权限没开</b><br><span class="tiny">开了它才能抓屏幕触点，游戏、自绘界面这类不给节点的 App 也录得上。</span>'
+        + '<div class="row" style="margin-top:8px"><button class="btn sm ok" data-act="overlay">去开启</button></div></div>';
+    }
+    if (on) {
+      h += '<div class="card"><b>录制中</b><br><span class="tiny">'
+        + (st.touch ? '触点捕获：✅ 已开启，任意界面都能录坐标。' : '触点捕获：⚠️ 没开，只能录有节点的界面（很多 App / 游戏录不到）。')
+        + '</span></div>';
+    }
     var rec = S.rec || [];
     if (!rec.length) {
       return h + '<div class="empty"><span class="e">🎬</span>还没有录到动作<br>'
-        + '<span class="tiny">点上面的红按钮，然后去别的 App 表演</span></div>';
+        + '<span class="tiny">' + (on ? '去别的 App 点几下，回来就有' : '点上面的红按钮，然后去别的 App 表演') + '</span></div>';
     }
     h += '<div class="row" style="margin:0 2px 10px"><div class="grow muted">共 ' + rec.length + ' 步</div>'
       + '<button class="btn sm ok" data-act="recSave">存为脚本</button>'
@@ -488,6 +504,8 @@
       + '<div class="kv"><span>震动反馈</span>' + sw('vibrate', p.vibrate !== false) + '</div>'
       + '<div class="kv"><span>开机自启悬浮球</span>' + sw('boot', !!p.boot) + '</div>'
       + '<div class="kv"><span>录制时记录真实间隔</span>' + sw('autoRecordDelay', p.autoRecordDelay !== false) + '</div>'
+      + '<div class="kv"><span>触点录制（抓屏幕坐标）</span>' + sw('touchRecord', p.touchRecord !== false) + '</div>'
+      + '<div class="tiny" style="margin-top:6px">触点录制不依赖界面节点，游戏、自绘界面也录得上；需要悬浮窗权限。关掉后只走无障碍事件。</div>'
       + '</div>';
 
     h += '<div class="card"><div class="sec">配色</div><div class="themes">';
