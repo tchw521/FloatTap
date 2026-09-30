@@ -78,6 +78,98 @@ public final class JsApi {
         return "ok";
     }
 
+    // ---------- 分享码（v1.8.0） ----------
+
+    /** 生成单个脚本的分享码 */
+    @JavascriptInterface
+    public String shareCode(String id) {
+        JSONObject sc = ScriptStore.findScript(id);
+        if (sc == null) return "err:脚本不存在";
+        String code = Share.one(sc);
+        return code.isEmpty() ? "err:没生成出来" : code;
+    }
+
+    /** 把全部脚本打成一个分享码（换手机时用） */
+    @JavascriptInterface
+    public String shareAll() {
+        JSONArray arr = ScriptStore.scripts();
+        if (arr == null || arr.length() == 0) return "err:还没有脚本可导出";
+        String code = Share.all(arr);
+        return code.isEmpty() ? "err:没生成出来" : code;
+    }
+
+    /** 导入一段分享码。重名会自动改名，id 重新生成，不会覆盖已有脚本 */
+    @JavascriptInterface
+    public String importCode(String code) {
+        JSONObject r = Share.decode(code);
+        if (r.has("err")) return "err:" + r.optString("err");
+        JSONArray all = ScriptStore.scripts();
+        if (all == null) all = new JSONArray();
+        int n = 0;
+        if ("all".equals(r.optString("kind"))) {
+            JSONArray list = r.optJSONArray("scripts");
+            if (list != null) {
+                for (int i = 0; i < list.length(); i++) {
+                    JSONObject s = list.optJSONObject(i);
+                    if (s != null) {
+                        all.put(fresh(s, all));
+                        n++;
+                    }
+                }
+            }
+        } else {
+            JSONObject s = r.optJSONObject("script");
+            if (s == null) return "err:分享码里没有脚本";
+            all.put(fresh(s, all));
+            n = 1;
+        }
+        if (n == 0) return "err:分享码里没有脚本";
+        ScriptStore.saveScripts(all);
+        Bus.emit("scripts", "");
+        if (FloatService.get() != null) FloatService.get().refresh();
+        return "ok:" + n;
+    }
+
+    /** 换个 id，名字撞了就加个后缀（别把用户已有的脚本盖掉） */
+    private static JSONObject fresh(JSONObject s, JSONArray all) {
+        try {
+            s.put("id", "s" + System.currentTimeMillis() + (int) (Math.random() * 100000));
+            s.put("runs", 0);
+            String name = s.optString("name", "导入的脚本");
+            int k = 2;
+            String base = name;
+            for (; ; ) {
+                boolean dup = false;
+                for (int i = 0; i < all.length(); i++) {
+                    if (name.equals(all.optJSONObject(i).optString("name"))) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) break;
+                name = base + " " + k++;
+            }
+            s.put("name", name);
+        } catch (Exception ignored) {
+        }
+        return s;
+    }
+
+    /** 复制到系统剪贴板 */
+    @SuppressWarnings("deprecation")
+    @JavascriptInterface
+    public String copy(String text) {
+        try {
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm == null) return "err:拿不到剪贴板";
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("lazytap", text));
+            return "ok";
+        } catch (Throwable t) {
+            return "err:" + t.getMessage();
+        }
+    }
+
     @JavascriptInterface
     public String status() {
         JSONObject o = new JSONObject();

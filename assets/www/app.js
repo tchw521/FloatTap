@@ -317,7 +317,8 @@
         + '</div></div>';
     }
     return h + '</div><div class="row" style="margin:12px 2px 0">'
-      + '<button class="btn sm ghost" data-act="import">📥 导入脚本 JSON</button></div>';
+      + '<button class="btn sm ghost grow" data-act="market">🏪 脚本市场</button>'
+      + '<button class="btn sm ghost grow" data-act="import">📥 导入 JSON</button></div>';
   }
 
   // ---------- 自动化触发器 ----------
@@ -650,6 +651,132 @@
       + '<div class="s">直接写代码，循环判断随你写</div></div>'
       + '</div><div class="tiny" style="margin-top:10px">模板坐标用百分比，换机型也不跑偏，进去再微调即可。</div>'
       + '<button class="btn ghost wide" style="margin-top:12px" data-act="cancelAct">取消</button>');
+  }
+
+  // ---------- 脚本市场（v1.8.0，本地内置，不联网） ----------
+  // 每个都是能直接跑的完整脚本，装完还能自己改
+  var MARKET = [
+    { n: '每日签到', d: '开 App → 找「签到」→ 记一笔 → 收工。带计数和变量，能看第几次',
+      icon: '🎁', tone: 3, mk: function () {
+        return { name: '每日签到', desc: '每天点一下，积分到手', kind: '', loop: false, loopCount: 1, startDelay: 3,
+          vars: [{ k: 'n', v: '0' }],
+          actions: [
+            { t: 'launch', p: 'com.tencent.mm', d: 2500 },
+            { t: 'find', s: '签到', click: true, contains: true, timeout: 5000, index: 1, d: 900 },
+            { t: 'if', m: 'text', s: '领取成功', contains: true, go: 0, els: -1, d: 200 },
+            { t: 'math', k: 'n', e: 'n+1', d: 100 },
+            { t: 'key', k: 'back', d: 500 }] }; } },
+    { n: '连点器', d: '对一个点疯狂输出，次数、节奏都能调',
+      icon: '🔨', tone: 1, mk: function () {
+        return { name: '连点器', desc: '手指终结者', kind: '', loop: true, jitter: true,
+          actions: [{ t: 'click', x: 50, y: 62, pct: 1, d: 130, repeat: 50 }] }; } },
+    { n: '刷短视频', d: '上滑 + 随机点赞，带抖动，节奏不像机器人',
+      icon: '📺', tone: 4, mk: function () {
+        return { name: '刷短视频', desc: '假装有人在看', kind: '', loop: true, jitter: true,
+          actions: [
+            { t: 'swipe', x1: 50, y1: 78, x2: 50, y2: 24, pct: 1, ms: 320, d: 2200 },
+            { t: 'random', x: 88, y: 62, r: 22, pct: 1, d: 800 }] }; } },
+    { n: '跳过广告', d: '盯着「跳过」一直点，找不到就等下一轮',
+      icon: '⏭', tone: 5, mk: function () {
+        return { name: '跳过广告', desc: '广告克星', kind: '', loop: true,
+          actions: [
+            { t: 'find', s: '跳过', click: true, contains: true, timeout: 1500, index: 1, d: 400 },
+            { t: 'wait', ms: 600 }] }; } },
+    { n: '游戏挂机', d: '点两下等三秒，循环，适合收菜类',
+      icon: '🎮', tone: 2, mk: function () {
+        return { name: '游戏挂机', desc: '手酸bye bye', kind: '', loop: true, jitter: true,
+          actions: [
+            { t: 'click', x: 30, y: 72, pct: 1, d: 600 },
+            { t: 'click', x: 70, y: 72, pct: 1, d: 600 },
+            { t: 'wait', ms: 3000 }] }; } },
+    { n: '找色点击（JS）', d: 'JS 写的：循环找橙色按钮，找到就点，最多 5 次',
+      icon: '📜', tone: 6, mk: function () {
+        return { name: '找色点击', desc: 'JS 脚本示例', kind: 'js', loop: false, loopCount: 1,
+          actions: [], vars: [],
+          code: '// 循环找橙色按钮，找到就点，最多 5 次\nawait sleep(2000);\n\n'
+            + "for (var i = 0; i < 5; i++) {\n"
+            + "  var p = await findColor('#FF6B35', { sim: 92 });\n"
+            + "  if (!p) { log('第 ' + (i + 1) + ' 轮没找到'); break; }\n"
+            + "  log('点 (' + p.x + ',' + p.y + ') 像 ' + p.sim + '%');\n"
+            + '  await click(p.x, p.y);\n'
+            + '  await sleep(800 + rand(0, 400));\n'
+            + "}\ntoast('收工');\n" }; } }
+  ];
+
+  function sheetMarket() {
+    var h = '<h3>🏪 脚本市场</h3>'
+      + '<div class="muted">挑一个装进「我的脚本」，装完随便改。</div><div class="list" style="margin-top:10px">';
+    for (var i = 0; i < MARKET.length; i++) {
+      var m = MARKET[i];
+      h += '<div class="item"><div class="ic g' + m.tone + '">' + m.icon + '</div>'
+        + '<div class="grow"><div class="t">' + esc(m.n)
+        + (m.mk().kind === 'js' ? '<span class="chip">JS</span>' : '') + '</div>'
+        + '<div class="d">' + esc(m.d) + '</div></div>'
+        + '<div class="acts"><button class="btn sm ok" data-act="mktGet" data-i="' + i + '">装</button></div></div>';
+    }
+    h += '</div><div class="tiny" style="margin-top:10px">都是本地内置的，不联网、不上传。'
+      + '想装别人做的脚本，用下面的「导入分享码」。</div>'
+      + '<div class="row" style="margin-top:10px">'
+      + '<button class="btn ghost grow" data-act="importCode">📥 导入分享码</button>'
+      + '<button class="btn ghost grow" data-act="exportAll">📤 导出全部</button></div>'
+      + '<button class="btn ghost wide" style="margin-top:9px" data-act="cancelAct">关闭</button>';
+    return h;
+  }
+
+  function mktGet(i) {
+    var m = MARKET[i];
+    if (!m) return;
+    var s = m.mk();
+    s.id = uid();
+    s.runs = 0;
+    S.scripts.unshift(s);
+    saveScripts();
+    closeSheet();
+    render();                       // 不重绘的话装完列表里看不见，还以为没装上
+    toast('装好了：' + m.n);
+  }
+
+  function sheetShare(id) {
+    var code = call('shareCode', id);
+    if (code.indexOf('err:') === 0) { toast(code.slice(4)); return; }
+    sheet('<h3>分享码</h3>'
+      + '<div class="muted">复制这段发给别人；对方在「🏪 脚本市场」里点「导入分享码」贴进去就能用。</div>'
+      + '<textarea id="shr" class="code" rows="5" style="min-height:110px;margin-top:10px">' + esc(code) + '</textarea>'
+      + '<div class="row" style="margin-top:10px">'
+      + '<button class="btn ok grow" data-act="copyCode">📋 复制</button>'
+      + '<button class="btn ghost" data-act="cancelAct">关闭</button></div>');
+  }
+
+  function sheetImportCode() {
+    sheet('<h3>导入分享码</h3>'
+      + '<div class="muted">把别人给你的那串 <code>LT1.</code> 开头的东西粘进来。</div>'
+      + '<textarea id="impc" class="code" rows="5" style="min-height:110px;margin-top:10px"'
+      + ' placeholder="LT1.…"></textarea>'
+      + '<div class="row" style="margin-top:10px">'
+      + '<button class="btn ok grow" data-act="importCodeGo">📥 导入</button>'
+      + '<button class="btn ghost" data-act="cancelAct">取消</button></div>');
+  }
+
+  function importCodeGo() {
+    var v = ((document.getElementById('impc') || {}).value || '').trim();
+    if (!v) { toast('先粘贴一段分享码'); return; }
+    var r = call('importCode', v);
+    if (r.indexOf('err:') === 0) { toast(r.slice(4)); return; }
+    var n = parseInt(r.slice(3), 10) || 1;
+    closeSheet();
+    refreshAll();
+    toast('导入了 ' + n + ' 个脚本');
+  }
+
+  function sheetExportAll() {
+    var code = call('shareAll');
+    if (code.indexOf('err:') === 0) { toast(code.slice(4)); return; }
+    sheet('<h3>导出全部</h3>'
+      + '<div class="muted">这一串里装着你全部 ' + S.scripts.length + ' 个脚本，换手机时粘过去就行。</div>'
+      + '<textarea id="shr" class="code" rows="5" style="min-height:110px;margin-top:10px">' + esc(code) + '</textarea>'
+      + '<div class="row" style="margin-top:10px">'
+      + '<button class="btn ok grow" data-act="copyCode">📋 复制</button>'
+      + '<button class="btn ghost" data-act="cancelAct">关闭</button></div>');
   }
 
   function newJsScript() {
@@ -1300,6 +1427,18 @@
       case 'addAct': sheet(sheetAddAct()); break;
       case 'pickTpl': useTemplate(+el.dataset.i); break;
       case 'newJs': newJsScript(); break;
+      case 'market': sheet(sheetMarket()); break;
+      case 'mktGet': mktGet(+el.dataset.i); break;
+      case 'share': sheetShare(id); break;
+      case 'exportAll': sheetExportAll(); break;
+      case 'importCode': sheetImportCode(); break;   // 它自己会开弹层，别再套一层 sheet()
+      case 'importCodeGo': importCodeGo(); break;
+      case 'copyCode': {
+        var ta = document.getElementById('shr');
+        if (!ta) { toast('没找到分享码'); break; }
+        if (ok(call('copy', ta.value))) toast('复制好了，去粘贴吧');
+        break;
+      }
       case 'runJs': ok(call('runJs', id)); setTimeout(refreshAll, 400); break;
       case 'stopJs': ok(call('stopJs')); setTimeout(refreshAll, 300); break;
       case 'jsApi': sheet(sheetJsApi()); break;
@@ -1529,6 +1668,7 @@
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="edit" data-id="' + id + '">✎ 编辑动作</button>'
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="dup" data-id="' + id + '">⧉ 复制一份</button>'
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="export" data-id="' + id + '">📤 导出 JSON</button>'
+      + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="share" data-id="' + id + '">🔗 生成分享码</button>'
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="pickIcon" data-id="' + id + '">🎨 换个图标</button>'
       + '<button class="btn warn wide" style="margin-bottom:9px" data-act="del" data-id="' + id + '">🗑 删除</button>'
       + '<button class="btn wide" data-act="cancelAct">关闭</button>');
