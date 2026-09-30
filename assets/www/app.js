@@ -6,6 +6,7 @@
 
   var S = {
     tab: 'scripts',
+    sub: null,        // 「我的」里的子页：log / trig / settings / about
     scripts: [],
     rec: [],
     st: {},
@@ -79,15 +80,29 @@
     findImage: { n: '找图', e: '🖼', c: 1, f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300 }, pct: ['rx', 'ry', 'rw', 'rh'] },
     set: { n: '赋值', e: '📝', f: [['k', '变量名', 'text'], ['v', '值（可写 {{变量}}）', 'var'], ['d', '之后等待 ms']], def: { k: 'n', v: '', d: 100 } },
     math: { n: '运算', e: '🧮', f: [['k', '存到哪个变量', 'text'], ['e', '算式（不用加 {{}}）', 'expr'], ['d', '之后等待 ms']], def: { k: 'n', e: 'n+1', d: 100 } },
-    cmpVar: { n: '比变量', e: '⚖️', f: [['l', '左边', 'var'], ['op', '怎么比', 'sel:cmpop'], ['r', '右边', 'var'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { l: 'n', op: '>=', r: '3', go: 0, els: 0, d: 100 } }
+    cmpVar: { n: '比变量', e: '⚖️', f: [['l', '左边', 'var'], ['op', '怎么比', 'sel:cmpop'], ['r', '右边', 'var'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { l: 'n', op: '>=', r: '3', go: 0, els: 0, d: 100 } },
+    cond: { n: '条件判断', e: '🧠', f: [['go', '全部/满足 → 跳到第几步'], ['els', '不满足 → 跳到第几步'], ['d', '之后等待 ms']], def: { mode: 0, n: 1, cs: [], rep: 0, repGap: 800, repMax: 10, go: 0, els: 0, d: 100 } }
   };
   var CMP_OP = { '==': '等于', '!=': '不等于', '>': '大于', '>=': '大于等于', '<': '小于', '<=': '小于等于' };
+  // 条件类型（v2.0.0）：跟自动精灵一样按「条件」组织，不是一个动作只挂一个判断
+  var CTYPES = {
+    text: { n: '屏幕上有字', e: '🔤', f: [['s', '要找的字', 'text'], ['contains', '模糊匹配', 'switch'], ['index', '第几个(1起)']], def: { s: '', contains: true, index: 1 }, sum: function (c) { return '有「' + (c.s || '') + '」'; } },
+    pkg: { n: '当前是某 App', e: '📱', f: [['v', '包名，如 com.tencent.mm', 'text']], def: { v: '' }, sum: function (c) { return '在 ' + (c.v || '?'); } },
+    color: { n: '屏幕上有颜色', e: '🎨', f: [['c', '颜色', 'color'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { c: '#FF6B35', sim: 95, rx: 0, ry: 0, rw: 100, rh: 100 }, pct: 1, sum: function (c) { return '有 ' + (c.c || ''); } },
+    image: { n: '屏幕上有图', e: '🖼', f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100 }, pct: 1, sum: function (c) { return '有图「' + (c.tpl || '未选') + '」'; } },
+    time: { n: '到了某个时间', e: '⏰', f: [['v', '时间点，如 09:00', 'text']], def: { v: '09:00' }, sum: function (c) { return '过了 ' + (c.v || ''); } },
+    rand: { n: '随机概率', e: '🎲', f: [['v', '成立的概率 %']], def: { v: 50 }, sum: function (c) { return '随机 ' + (c.v || 0) + '%'; } },
+    expr: { n: '表达式成立', e: '🧮', f: [['v', '算式，算出来是 1 就算成立', 'expr']], def: { v: 'n>2' }, sum: function (c) { return c.v || ''; } },
+    always: { n: '总是成立', e: '✅', f: [], def: {}, sum: function () { return '恒真'; } }
+  };
+  var CMODE = [['全部满足', '全部满足'], ['满足一个', '至少一个满足'], ['满足指定个数', '凑够 N 个才算成立']];
   var KEYS = ['back:返回', 'home:桌面', 'recents:最近任务', 'notif:通知栏', 'quick:快捷设置', 'lock:锁屏', 'power:电源菜单', 'split:分屏'];
   var OPTS = {
     ifmode: [['text', '屏幕上有这个字'], ['pkg', '当前是这个 App']],
     cntmode: [['add', '往上加'], ['reset', '清零']],
     multi: [['twoTap', '双指齐点'], ['twoLong', '双指按住'], ['pinch', '双指捏合'], ['spread', '双指张开']],
-    cmpop: [['==', '等于'], ['!=', '不等于'], ['>', '大于'], ['>=', '大于等于'], ['<', '小于'], ['<=', '小于等于']]
+    cmpop: [['==', '等于'], ['!=', '不等于'], ['>', '大于'], ['>=', '大于等于'], ['<', '小于'], ['<=', '小于等于']],
+    cmode: CMODE
   };
   var MULTI_N = { twoTap: '双指齐点', twoLong: '双指按住', pinch: '捏合', spread: '张开' };
   var TG = {
@@ -193,10 +208,14 @@
     if (S.editId && S.tab === 'scripts') {
       var s = findScript(S.editId);
       page.innerHTML = s ? viewEditor(s) : '';
+    } else if (S.tab === 'mine') {
+      var sub = S.sub && ({
+        log: viewLog, trig: viewTriggers, settings: viewSettings, about: viewAbout
+      })[S.sub];
+      page.innerHTML = (S.sub ? subBar() : '') + (sub ? sub() : viewMine());
     } else {
       page.innerHTML = ({
-        scripts: viewScripts, record: viewRecord, log: viewLog, trig: viewTriggers,
-        settings: viewSettings, about: viewAbout
+        scripts: viewScripts, market: viewMarket, record: viewRecord
       })[S.tab]();
     }
     if (swapped) { page.classList.remove('swap'); void page.offsetWidth; page.classList.add('swap'); }
@@ -317,7 +336,7 @@
         + '</div></div>';
     }
     return h + '</div><div class="row" style="margin:12px 2px 0">'
-      + '<button class="btn sm ghost grow" data-act="market">🏪 脚本市场</button>'
+      + '<button class="btn sm ghost grow" data-tab="market">🏪 脚本市场</button>'
       + '<button class="btn sm ghost grow" data-act="import">📥 导入 JSON</button></div>';
   }
 
@@ -480,6 +499,58 @@
   }
 
   // ---------- 日志 ----------
+  // ---------- 我的：日志/自动化/设置/关于 的入口 ----------
+  var MINE = [
+    { k: 'log', e: '🧾', n: '运行日志', d: '看看刚才到底干了啥', tone: 5 },
+    { k: 'trig', e: '⚡', n: '自动触发', d: '定时、通知、插电、解锁时自动跑', tone: 1 },
+    { k: 'settings', e: '⚙️', n: '设置', d: '悬浮球、主题、循环与防检测抖动', tone: 4 },
+    { k: 'about', e: '💡', n: '关于', d: '版本说明与更新日志', tone: 3 }
+  ];
+  function subBar() {
+    var m = null;
+    for (var i = 0; i < MINE.length; i++) if (MINE[i].k === S.sub) m = MINE[i];
+    return '<div class="subbar"><button class="btn sm ghost" data-act="mineBack">‹ 我的</button>'
+      + '<span class="sbt">' + esc(m ? m.n : '') + '</span></div>';
+  }
+  function viewMine() {
+    var st = S.st || {};
+    var h = '<div class="hero"><div class="hi">我的</div>'
+      + '<div class="ht">' + (S.scripts.length
+        ? S.scripts.length + ' 个脚本待命' + (st.running ? ' · 正在跑' : '')
+        : '一个脚本都还没有') + '</div>'
+      + '<div class="hs">' + dot(st.acc, '无障碍', 'acc') + dot(st.overlay, '悬浮窗', 'overlay')
+      + (st.ball ? '<span class="dot ok"><b></b>悬浮球在岗</span>' : '')
+      + (st.running ? '<span class="dot run"><b></b>运行中</span>' : '') + '</div></div>';
+    h += hintBox() + '<div class="list">';
+    for (var i = 0; i < MINE.length; i++) {
+      var m = MINE[i];
+      h += '<div class="item" data-act="mineGo" data-k="' + m.k + '">'
+        + '<div class="ic g' + m.tone + '">' + m.e + '</div>'
+        + '<div class="grow"><div class="t">' + esc(m.n) + '</div><div class="d">' + esc(m.d) + '</div></div>'
+        + '<div class="acts"><span class="tiny">›</span></div></div>';
+    }
+    return h + '</div>';
+  }
+
+  // ---------- 脚本市场（整页） ----------
+  function viewMarket() {
+    var h = '<div class="hero"><div class="hi">🏪 脚本市场</div>'
+      + '<div class="ht">挑一个装进「脚本」，装完随便改</div></div><div class="list">';
+    for (var i = 0; i < MARKET.length; i++) {
+      var m = MARKET[i];
+      h += '<div class="item"><div class="ic g' + m.tone + '">' + m.icon + '</div>'
+        + '<div class="grow"><div class="t">' + esc(m.n)
+        + (m.mk().kind === 'js' ? '<span class="chip">JS</span>' : '') + '</div>'
+        + '<div class="d">' + esc(m.d) + '</div></div>'
+        + '<div class="acts"><button class="btn sm ok" data-act="mktGet" data-i="' + i + '">装</button></div></div>';
+    }
+    return h + '</div><div class="card"><div class="tiny">都是本地内置的，不联网、不上传。'
+      + '想装别人做的脚本，用下面的「导入分享码」。</div>'
+      + '<div class="row" style="margin-top:10px">'
+      + '<button class="btn ghost grow" data-act="importCode">📥 导入分享码</button>'
+      + '<button class="btn ghost grow" data-act="exportAll">📤 导出全部</button></div></div>';
+  }
+
   function viewLog() {
     var st = S.st || {};
     var logs = st.log || [];
@@ -609,6 +680,7 @@
   window.__back = function () {
     if (!$('#modal').classList.contains('hidden')) { closeSheet(); return true; }
     if (S.tab === 'scripts' && S.editId) { S.editId = null; render(); return true; }
+    if (S.tab === 'mine' && S.sub) { S.sub = null; render(); return true; }
     if (S.tab !== 'scripts') { S.tab = 'scripts'; render(); return true; }
     return false;
   };
@@ -703,26 +775,6 @@
             + "}\ntoast('收工');\n" }; } }
   ];
 
-  function sheetMarket() {
-    var h = '<h3>🏪 脚本市场</h3>'
-      + '<div class="muted">挑一个装进「我的脚本」，装完随便改。</div><div class="list" style="margin-top:10px">';
-    for (var i = 0; i < MARKET.length; i++) {
-      var m = MARKET[i];
-      h += '<div class="item"><div class="ic g' + m.tone + '">' + m.icon + '</div>'
-        + '<div class="grow"><div class="t">' + esc(m.n)
-        + (m.mk().kind === 'js' ? '<span class="chip">JS</span>' : '') + '</div>'
-        + '<div class="d">' + esc(m.d) + '</div></div>'
-        + '<div class="acts"><button class="btn sm ok" data-act="mktGet" data-i="' + i + '">装</button></div></div>';
-    }
-    h += '</div><div class="tiny" style="margin-top:10px">都是本地内置的，不联网、不上传。'
-      + '想装别人做的脚本，用下面的「导入分享码」。</div>'
-      + '<div class="row" style="margin-top:10px">'
-      + '<button class="btn ghost grow" data-act="importCode">📥 导入分享码</button>'
-      + '<button class="btn ghost grow" data-act="exportAll">📤 导出全部</button></div>'
-      + '<button class="btn ghost wide" style="margin-top:9px" data-act="cancelAct">关闭</button>';
-    return h;
-  }
-
   function mktGet(i) {
     var m = MARKET[i];
     if (!m) return;
@@ -732,7 +784,8 @@
     S.scripts.unshift(s);
     saveScripts();
     closeSheet();
-    render();                       // 不重绘的话装完列表里看不见，还以为没装上
+    S.tab = 'scripts';              // 装完带到「脚本」页，不然用户看不见装哪了
+    render();
     toast('装好了：' + m.n);
   }
 
@@ -982,6 +1035,7 @@
     if (!a) { closeSheet(); return ''; }
     S.editAct = i;
     var t = TYPES[a.t] || { n: a.t, e: '❔', f: [] };
+    if (a.t === 'cond') return condActForm(a, i);   // 条件动作有专门的表单
     var h = '<h3>' + t.e + ' ' + t.n + '</h3>';
     for (var j = 0; j < t.f.length; j++) {
       var key = t.f[j][0], label = t.f[j][1], kind = t.f[j][2];
@@ -1030,6 +1084,117 @@
     h += '<div class="row" style="margin-top:14px">'
       + '<button class="btn ghost grow" data-act="cancelAct">取消</button>'
       + '<button class="btn ok grow" data-act="saveAct" data-i="' + i + '">保存</button></div>';
+    return h;
+  }
+
+  // ---------- 条件判断动作的表单（v2.0.0） ----------
+
+  /** 条件动作的主表单：满足模式 + 条件清单（就地增删，不跳层） */
+  function condActForm(a, i) {
+    if (!a.cs) a.cs = [];
+    var h = '<h3>' + '🧠 条件判断</h3>'
+      + '<div class="muted">把几个条件凑在一起判断，成立走一条路，不成立走另一条。'
+      + '跟老的「如果 / 找色 / 比变量」那套步号跳转并存，随便混用。</div>';
+
+    h += '<div class="cond"><div class="ch">满足模式</div>'
+      + '<label class="f"><span>这几个条件要怎么才算成立</span><select data-field="mode">';
+    for (var m = 0; m < CMODE.length; m++) {
+      h += '<option value="' + m + '"' + ((a.mode || 0) === m ? ' selected' : '') + '>' + esc(CMODE[m][1]) + '</option>';
+    }
+    h += '</select></label>'
+      + '<label class="f" id="nwrap"' + ((a.mode || 0) === 2 ? '' : ' style="display:none"')
+      + '><span>凑够几个</span><input data-field="n" type="number" value="' + (a.n || 1) + '"></label></div>';
+
+    h += '<div class="cond"><div class="ch">条件清单'
+      + '<span class="tiny" style="font-weight:400;margin-left:auto">' + a.cs.length + ' 个</span></div>';
+    if (!a.cs.length) {
+      h += '<div class="tiny" style="padding:6px 0">还没加条件。下面挑一个加上，'
+        + '比如「屏幕上有『签到』」。</div>';
+    }
+    for (var j = 0; j < a.cs.length; j++) {
+      h += condRow(a.cs[j], j);
+    }
+    h += '</div>'
+      + '<div class="row" style="gap:6px;flex-wrap:wrap">';
+    var keys = Object.keys(CTYPES);
+    for (var k = 0; k < keys.length; k++) {
+      h += '<button class="btn sm ghost" data-act="condAdd" data-k="' + keys[k] + '">＋ '
+        + CTYPES[keys[k]].e + CTYPES[keys[k]].n + '</button>';
+    }
+    h += '</div>';
+
+    h += '<div class="cond"><div class="ch">重复检查</div>'
+      + '<div class="kv"><span>不成立就反复试，直到成立</span>'
+      + '<div class="switch ' + (a.rep ? 'on' : '') + '" data-field="rep"><i></i></div></div>'
+      + '<label class="f"><span>每次间隔 ms</span><input data-field="repGap" type="number" value="' + (a.repGap || 800) + '"></label>'
+      + '<label class="f"><span>最多试几次</span><input data-field="repMax" type="number" value="' + (a.repMax || 10) + '"></label>'
+      + '<div class="tiny">试满还是不成，就走「不满足」那条路。填 10 就是最多等 10 × 间隔。</div></div>';
+
+    h += '<label class="f"><span>成立 → 跳到第几步（0=往下走）</span><input data-field="go" type="number" value="' + (a.go || 0) + '"></label>'
+      + '<label class="f"><span>不满足 → 跳到第几步（0=往下走，-1=收工）</span><input data-field="els" type="number" value="' + (a.els || 0) + '"></label>'
+      + '<label class="f"><span>之后等待 ms</span><input data-field="d" type="number" value="' + (a.d == null ? 100 : a.d) + '"></label>'
+      + '<div class="row" style="margin-top:14px">'
+      + '<button class="btn ghost grow" data-act="cancelAct">取消</button>'
+      + '<button class="btn ok grow" data-act="saveCond" data-i="' + i + '">保存</button></div>';
+    return h;
+  }
+
+  /** 单个条件在清单里的一行 */
+  function condRow(c, j) {
+    var ct = CTYPES[c.k] || CTYPES.always;
+    var d = ct.sum(c);
+    return '<div class="conditem">'
+      + '<div class="ct"><div>' + ct.e + ' ' + esc(ct.n) + '</div>'
+      + '<div class="cd">' + esc(d) + '</div></div>'
+      + '<button class="btn sm ghost" data-act="condEdit" data-i="' + j + '">改</button>'
+      + '<button class="btn sm ghost" data-act="condDel" data-i="' + j + '">✕</button></div>';
+  }
+
+  /** 改单个条件：就地展开成一个小弹层，改完塞回 a.cs[j] */
+  function sheetCondEdit(j) {
+    var s = findScript(S.editId);
+    var a = s && s.actions[S.editAct];
+    if (!a || !a.cs || !a.cs[j]) return '';
+    var c = a.cs[j];
+    var ct = CTYPES[c.k] || CTYPES.always;
+    var h = '<h3>' + ct.e + ' ' + ct.n + '</h3>';
+    for (var q = 0; q < ct.f.length; q++) {
+      var key = ct.f[q][0], label = ct.f[q][1], kind = ct.f[q][2];
+      if (kind === 'switch') {
+        h += '<div class="kv"><span>' + label + '</span><div class="switch ' + (c[key] ? 'on' : '') + '" data-cfield="' + key + '"><i></i></div></div>';
+      } else if (kind === 'color') {
+        h += '<label class="f"><span>' + label + '</span>'
+          + '<span class="row" style="gap:8px"><span class="swatch" style="background:' + esc(c[key] || '#000') + '" data-swatch="' + key + '"></span>'
+          + '<input data-cfield="' + key + '" type="text" value="' + esc(c[key] == null ? '' : c[key]) + '" class="grow"></span></label>'
+          + '<button class="btn ghost wide" style="margin:0 0 4px" data-act="pickColor" data-field-for="' + key + '">🎨 截图取色</button>';
+      } else if (kind === 'var' || kind === 'expr') {
+        h += '<label class="f"><span>' + label + '</span>'
+          + '<input data-cfield="' + key + '" type="text" value="' + esc(c[key] == null ? '' : c[key]) + '"></label>'
+          + '<div class="row" style="margin:-4px 0 6px;gap:6px">'
+          + '<button class="btn sm ghost" data-act="insVar" data-field-for="' + key + '">🧩 插入变量</button>'
+          + (kind === 'expr' ? '<button class="btn sm ghost" data-act="tryExpr" data-field-for="' + key + '">= 试算</button>' : '')
+          + '</div>';
+      } else if (kind && kind.indexOf('sel:') === 0) {
+        var optKey = kind.slice(4), opts = OPTS[optKey] || [];
+        h += '<label class="f"><span>' + label + '</span><select data-cfield="' + key + '">';
+        for (var z = 0; z < opts.length; z++) {
+          h += '<option value="' + esc(opts[z][0]) + '"' + (String(c[key]) === String(opts[z][0]) ? ' selected' : '') + '>' + esc(opts[z][1]) + '</option>';
+        }
+        h += '</select></label>';
+        if (optKey === 'tpls') {
+          if (!opts.length) h += '<div class="tiny" style="margin:-4px 0 6px">还没有模板图，先去「设置 → 图色模板」截一张存起来。</div>';
+          else h += '<button class="btn ghost wide" style="margin:0 0 4px" data-act="goTpl">🖼 管理模板图</button>';
+        }
+      } else {
+        h += '<label class="f"><span>' + label + '</span><input data-cfield="' + key + '" type="' + (kind === 'text' ? 'text' : 'number') + '" value="' + esc(c[key] == null ? '' : c[key]) + '"></label>';
+      }
+    }
+    if (ct.pct) {
+      h += '<div class="kv"><span>上面四个数按百分比算</span><div class="switch ' + (c.pct ? 'on' : '') + '" data-cfield="pct"><i></i></div></div>';
+    }
+    h += '<div class="row" style="margin-top:14px">'
+      + '<button class="btn ghost grow" data-act="condEditBack">返回</button>'
+      + '<button class="btn ok grow" data-act="condEditSave" data-i="' + j + '">确定</button></div>';
     return h;
   }
 
@@ -1349,12 +1514,12 @@
     if (e.target && e.target.id === 'modal') {
       S.editAct = null; S.pick = null; closeSheet(); return;
     }
-    var el = e.target.closest('[data-act],[data-toggle],.switch,#tabs button');
+    var el = e.target.closest('[data-act],[data-toggle],[data-tab],.switch,#tabs button');
     if (!el) return;
     var act = el.dataset.act;
 
     // 底部 tab
-    if (el.dataset.tab) { S.tab = el.dataset.tab; S.editId = null; render(); return; }
+    if (el.dataset.tab) { S.tab = el.dataset.tab; S.editId = null; S.sub = null; render(); return; }
 
     // 开关（设置项 / 弹层字段）
     if (el.classList.contains('switch')) {
@@ -1427,7 +1592,9 @@
       case 'addAct': sheet(sheetAddAct()); break;
       case 'pickTpl': useTemplate(+el.dataset.i); break;
       case 'newJs': newJsScript(); break;
-      case 'market': sheet(sheetMarket()); break;
+      case 'market': S.tab = 'market'; S.editId = null; render(); break;
+      case 'mineGo': S.tab = 'mine'; S.sub = el.dataset.k; render(); break;
+      case 'mineBack': S.sub = null; render(); break;
       case 'mktGet': mktGet(+el.dataset.i); break;
       case 'share': sheetShare(id); break;
       case 'exportAll': sheetExportAll(); break;
@@ -1527,6 +1694,13 @@
       case 'tryExpr': tryExpr(el.dataset.fieldFor); break;
       case 'addVar': addVar(); break;
       case 'delVar': delVar(+el.dataset.i); break;
+      // ---- 条件判断（v2.0.0）----
+      case 'condAdd': condAdd(el.dataset.k); break;
+      case 'condDel': condDel(+el.dataset.i); break;
+      case 'condEdit': condEdit(+el.dataset.i); break;
+      case 'condEditBack': condEditBack(); break;
+      case 'condEditSave': condEditSave(+el.dataset.i); break;
+      case 'saveCond': saveCond(+el.dataset.i); break;
       case 'pickColor':
         S.pick = { field: el.dataset.fieldFor, mode: 'color' };
         if (!S.shot && !loadShot()) break;
@@ -1585,7 +1759,7 @@
         if (pk2 && ca) { pk2.value = ca.replace(/^"|"$/g, ''); toast('填上了：' + ca); }
         else toast('没读到前台应用');
         break;
-      case 'goTrig': S.tab = 'trig'; render(); break;
+      case 'goTrig': S.tab = 'mine'; S.sub = 'trig'; render(); break;
       case 'theme':
         ok(call('savePrefs', JSON.stringify({ theme: el.dataset.v })));
         S.prefs.theme = el.dataset.v;
@@ -1598,6 +1772,12 @@
   // 设置里的下拉 / 滑块：改完就地更新，不整体重绘（否则手一抖滑块就飞了）
   document.addEventListener('change', function (e) {
     var el = e.target;
+    // 条件判断：选「满足指定个数」才需要填 N
+    if (el.dataset.field === 'mode') {
+      var w = document.getElementById('nwrap');
+      if (w) w.style.display = (+el.value === 2 ? '' : 'none');
+      return;
+    }
     if (!el.dataset.pref) return;
     var v = el.value;
     if (el.type === 'range') {
@@ -1662,8 +1842,93 @@
     render();
   }
 
-  function sheetMore(id) {
-    var s = findScript(id);
+  // ---------- 条件动作的增删改（v2.0.0） ----------
+
+  /** 把主表单上的改动收进动作 a（只收 data-field 里的那几个） */
+  function syncCondAct(a) {
+    var fs = document.querySelectorAll('#sheet [data-field]');
+    for (var q = 0; q < fs.length; q++) {
+      var f = fs[q], k = f.dataset.field;
+      if (f.classList.contains('switch')) { a[k] = f.classList.contains('on'); continue; }
+      if (k === 'mode') { a.mode = +f.value; continue; }
+      var n = num(f.value, NaN);
+      a[k] = isNaN(n) ? f.value : n;
+    }
+  }
+
+  /** 加一个条件：把主表单改动先收好，再往清单里塞一个新的 */
+  function condAdd(k) {
+    var s = findScript(S.editId);
+    var a = s && s.actions[S.editAct];
+    if (!a) return;
+    syncCondAct(a);
+    if (!a.cs) a.cs = [];
+    var ct = CTYPES[k] || CTYPES.always;
+    var c = { k: k };
+    for (var key in ct.def) if (Object.prototype.hasOwnProperty.call(ct.def, key)) c[key] = ct.def[key];
+    a.cs.push(c);
+    saveScripts();
+    sheet(sheetEditAct(S.editAct));   // 就地重画，回到主表单
+    toast('加了一个条件：' + ct.n);
+  }
+
+  function condDel(j) {
+    var s = findScript(S.editId);
+    var a = s && s.actions[S.editAct];
+    if (!a || !a.cs) return;
+    syncCondAct(a);
+    a.cs.splice(j, 1);
+    saveScripts();
+    sheet(sheetEditAct(S.editAct));
+  }
+
+  function condEdit(j) {
+    var s = findScript(S.editId);
+    var a = s && s.actions[S.editAct];
+    if (!a) return;
+    syncCondAct(a);          // 先存主表单，否则从子页返回时改动会丢
+    saveScripts();
+    var h = sheetCondEdit(j);
+    if (h) sheet(h);
+  }
+
+  function condEditBack() {
+    sheet(sheetEditAct(S.editAct));
+  }
+
+  /** 子页里点「确定」：把 data-cfield 收进 a.cs[j] */
+  function condEditSave(j) {
+    var s = findScript(S.editId);
+    var a = s && s.actions[S.editAct];
+    if (!a || !a.cs || !a.cs[j]) return;
+    var c = a.cs[j];
+    var fs = document.querySelectorAll('#sheet [data-cfield]');
+    for (var q = 0; q < fs.length; q++) {
+      var f = fs[q], k = f.dataset.cfield;
+      if (f.classList.contains('switch')) { c[k] = f.classList.contains('on'); continue; }
+      var raw = f.value;
+      if (k === 'v' || k === 's' || k === 'c' || k === 'tpl') { c[k] = raw; continue; }   // 可能填 {{变量}}
+      var n = num(raw, NaN);
+      c[k] = isNaN(n) ? raw : n;
+    }
+    saveScripts();
+    sheet(sheetEditAct(S.editAct));   // 回主表单，能立刻看到这条的说明变了
+    toast('条件改好了');
+  }
+
+  /** 条件动作整体保存：主表单收一遍就够，条件清单是就地存的 */
+  function saveCond(i) {
+    var s = findScript(S.editId);
+    var a = s && s.actions[i];
+    if (!a) return;
+    syncCondAct(a);
+    saveScripts();
+    closeSheet();
+    render();
+    toast('条件判断存好了');
+  }
+
+  function sheetMore(id) {    var s = findScript(id);
     sheet('<h3>' + esc(s.name) + '</h3>'
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="edit" data-id="' + id + '">✎ 编辑动作</button>'
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="dup" data-id="' + id + '">⧉ 复制一份</button>'
@@ -1780,7 +2045,7 @@
     refreshAll();
     loadRec();
     setInterval(function () {
-      if (S.tab === 'log') refreshAll();
+      if (S.tab === 'mine' && S.sub === 'log') refreshAll();
     }, 1200);
   }
 

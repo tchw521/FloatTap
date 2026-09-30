@@ -50,6 +50,9 @@ public final class ScriptRunner {
     private final java.util.HashMap<String, String> hits = new java.util.HashMap<>();
     /** 脚本变量：每次开跑从脚本初值重置，任何动作字段都能写 {{变量}} */
     private final Vars vars = new Vars();
+    /** v2.0.0 多条件系统：同一轮里多个图色条件共用一张截图 */
+    private Bitmap shotBmp;
+    private long shotAt;
 
     ScriptRunner() {
         thread.start();
@@ -228,6 +231,8 @@ public final class ScriptRunner {
         switch (t) {
             case "if":
                 return execIf(svc, a);
+            case "cond":
+                return execCond(svc, a);
             case "set":
                 return execSet(a);
             case "math":
@@ -418,8 +423,169 @@ public final class ScriptRunner {
         return go;
     }
 
-    // ---------- 图色识别 ----------
+    // ---------- 多条件系统（v2.0.0） ----------
+    //
+    // 与旧版 go/els 绝对步号跳转并联共存：老脚本原样能跑。
+    // 结构：{ t:"cond", mode:"and|or|count", n:N, cs:[ {k:...}, ... ],
+    //         rep:0/1, repGap:ms, repMax:N, go:第几步, els:第几步, d:ms }
+    // 条件 k 取值：text 屏上有字 / pkg 当前是某 App / color 有颜色 / image 有图 / time 在时间点之后 / rand 随机数 / expr 表达式 / always 恒真
 
+    private static final int C_MAX_MS = 20000;   // 单个条件的等待上限，防止写个 99999 就卡死
+
+    /** 多条件判断：满足走 go，不满足走 els；开了「重复检查」就一直等到成功或超上限 */
+    private int execCond(TapService svc, JSONObject a) {
+        JSONArray cs = a.optJSONArray("cs");
+        if (cs == null || cs.length() == 0) {
+            log("条件列表是空的，当成成立（不然脚本会永远卡在这）");
+            return jump(a, true);
+        }
+        boolean repeat = a.optInt("rep", 0) == 1;
+        long gap = Math.max(50, a.optLong("repGap", 800));
+        int max = Math.max(1, a.optInt("repMax", 1));
+        boolean hit = false;
+        String why = "";
+        int round = 0;
+        while (true) {
+            round++;
+            int[] r = checkCond(svc, a, cs);
+            hit = r[0] == 1;
+            why = whyOf(r[1]);
+            if (hit || !repeat || round >= max) break;
+            log("条件没成，等 " + gap + "ms 再试（第 " + round + "/" + max + " 次）");
+            try {
+                Thread.sleep(gap);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        log("条件" + (hit ? " ✓成立" : " ✗不成立") + "：" + why
+                + (repeat && round > 1 ? "（试了 " + round + " 次）" : ""));
+        return jump(a, hit);
+    }
+
+    /** 返回 {是否成立(1/0), 命中了几个, 总数}，同时把过程写进日志 */
+    private int[] checkCond(TapService svc, JSONObject a, JSONArray cs) {
+        int mode = a.optInt("mode", 0);       // 0=and 1=or 2=count
+        int need = Math.max(1, a.optInt("n", 1));   // mode=count 时要凑够几个
+        int got = 0;
+        boolean first = true;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < cs.length(); i++) {
+            JSONObject c = cs.optJSONObject(i);
+            if (c == null) continue;
+            boolean ok = oneCond(svc, c);
+            if (ok) got++;
+            if (!first) sb.append(mode == 1 ? " 或 " : " 且 ");
+            first = false;
+            sb.append(shortCond(c)).append(ok ? "✓" : "✗");
+        }
+        boolean pass;
+        if (mode == 1) pass = got >= 1;                      // 满足一个
+        else if (mode == 2) pass = got >= need;              // 满足 N 个
+        else pass = got == cs.length();                      // 全部满足
+        return new int[]{pass ? 1 : 0, got, cs.length()};
+    }
+
+    /** 单个条件求值 */
+    private boolean oneCond(TapService svc, JSONObject c) {
+        String k = c.optString("k", "always");
+        if ("always".equals(k)) return true;
+        if ("pkg".equals(k)) {
+            String want = c.optString("v", "");
+            String cur = svc.topPkg();
+            return !want.isEmpty() && cur != null && (cur.equals(want) || cur.contains(want));
+        }
+        if ("time".equals(k)) {
+            String hm = c.optString("v", "00:00");
+            int[] t = parseHm(hm);
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            int now = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE);
+            return now >= t[0] * 60 + t[1];
+        }
+        if ("rand".equals(k)) {
+            int p = (int) c.optDouble("v", 50);
+            if (p <= 0) return false;
+            if (p >= 100) return true;
+            return rnd.nextInt(100) < p;
+        }
+        if ("expr".equals(k)) {
+            String r = vars.eval(c.optString("v", ""));
+            return "1".equals(r) || "true".equalsIgnoreCase(r);
+        }
+        if ("text".equals(k)) {
+            String text = c.optString("s", "");
+            if (text.isEmpty()) return false;
+            AccessibilityNodeInfo node = svc.findNode(text, c.optBoolean("contains", true),
+                    false, Math.max(1, c.optInt("index", 1)));
+            if (node == null) return false;
+            node.recycle();
+            return true;
+        }
+        if ("color".equals(k)) {
+            Bitmap bmp = shotCached(svc, c);
+            if (bmp == null) return false;
+            int[] box = region(bmp, c);
+            int[] hit = Img.findColor(bmp, Img.parseColor(c.optString("c", "#000000")),
+                    c.optInt("sim", 95), box[0], box[1], box[2], box[3], Math.max(2, c.optInt("step", 2)));
+            if (hit != null) rememberHit(hit[0], hit[1], hit[2]);
+            return hit != null;
+        }
+        if ("image".equals(k)) {
+            Bitmap bmp = shotCached(svc, c);
+            if (bmp == null) return false;
+            String tpl = c.optString("tpl", "");
+            if (tpl.isEmpty()) return false;
+            Bitmap t = TplStore.get(tpl);
+            if (t == null) return false;
+            int[] box = region(bmp, c);
+            int[] hit = Img.findImage(bmp, t, c.optInt("sim", 90), box[0], box[1], box[2], box[3]);
+            if (hit != null) rememberHit(hit[0], hit[1], hit[2]);
+            return hit != null;
+        }
+        return false;
+    }
+
+    /** 多条件同时用到截图时只截一次，省掉几十毫秒 */
+    private Bitmap shotCached(TapService svc, JSONObject c) {
+        long now = System.currentTimeMillis();
+        int life = Math.max(0, Math.min(C_MAX_MS, c.optInt("wait", 0)));
+        if (shotBmp == null || now - shotAt > Math.max(life, 800)) {
+            shotBmp = Capture.shot(svc, 1500);
+            shotAt = now;
+        }
+        return shotBmp;
+    }
+
+    private int[] parseHm(String hm) {
+        try {
+            String[] p = hm.trim().split(":");
+            return new int[]{Integer.parseInt(p[0].trim()), p.length > 1 ? Integer.parseInt(p[1].trim()) : 0};
+        } catch (Throwable t) {
+            return new int[]{0, 0};
+        }
+    }
+
+    /** 条件的一句话说明，给日志用 */
+    private String shortCond(JSONObject c) {
+        String k = c.optString("k", "always");
+        switch (k) {
+            case "text": return "屏上有「" + c.optString("s", "") + "」";
+            case "pkg": return "当前是 " + c.optString("v", "");
+            case "color": return "有颜色 " + c.optString("c", "");
+            case "image": return "有图「" + c.optString("tpl", "") + "」";
+            case "time": return "过了 " + c.optString("v", "");
+            case "rand": return "随机 " + (int) c.optDouble("v", 50) + "%";
+            case "expr": return c.optString("v", "");
+            default: return "恒真";
+        }
+    }
+
+    private String whyOf(int got) {
+        return "命中 " + got + " 个";
+    }
+
+    // ---------- 图色识别 ----------
     /** 比色：某一点是不是目标颜色，是走 go，否则走 els */
     private int execCmpColor(TapService svc, JSONObject a) {
         Bitmap bmp = Capture.shot(svc, 1500);

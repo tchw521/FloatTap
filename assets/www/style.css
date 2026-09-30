@@ -346,3 +346,20 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
   border-radius:12px;padding:11px 12px;outline:none;white-space:pre;overflow-wrap:normal;
   overflow-x:auto;tab-size:2;-webkit-text-size-adjust:100%}
 .code:focus{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 18%,transparent)}
+
+/* 「我的」子页顶部返回条（v2.0.0） */
+.subbar{display:flex;align-items:center;gap:10px;margin:2px 0 10px}
+.subbar .sbt{font-size:14px;font-weight:800;color:var(--txt);letter-spacing:.2px}
+.subbar .btn{flex:0 0 auto}
+
+/* 条件卡（v2.0.0） */
+.cond{background:var(--glass2);border:1px solid var(--stroke);border-radius:14px;
+  padding:10px 12px;margin-top:8px}
+.cond .ch{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--sub)}
+.cond .chip.on{background:linear-gradient(135deg,rgba(var(--glow),.18),rgba(var(--glow2),.10));
+  color:var(--brand);border-color:color-mix(in srgb,var(--c) 40%,transparent)}
+.conditem{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px dashed var(--line)}
+.conditem:first-of-type{border-top:0}
+.conditem .ct{flex:1;min-width:0;font-size:13px}
+.conditem .cd{font-size:11px;color:var(--sub);margin-top:2px}
+.cond .tiny{color:var(--sub)}
