@@ -18,6 +18,7 @@
     prefs: {},
     editId: null,     // 正在编辑的脚本 id
     editAct: -1,      // 正在编辑的动作下标
+    groupIdx: null,   // 正在编辑第几个分组里的内容（null=在脚本根层的动作列表）
     q: '',            // 脚本搜索词
     cap: {},          // 截图/图色状态
     shot: '',         // 最新截图 dataURL
@@ -88,10 +89,10 @@
 
   // ---------- 动作定义 ----------
   var TYPES = {
-    click: { n: '点击', e: '👆', c: 1, f: [['x', 'X 坐标'], ['y', 'Y 坐标'], ['d', '之后等待 ms']], def: { d: 300 } },
+    click: { n: '点击', e: '👆', c: 1, f: [['x', 'X 坐标'], ['y', 'Y 坐标'], ['d', '之后等待 ms']], def: { x: 50, y: 50, d: 300 } },
     double: { n: '双击', e: '✌️', c: 1, f: [['x', 'X'], ['y', 'Y'], ['d', '之后等待 ms']], def: { d: 300 } },
     long: { n: '长按', e: '👇', c: 1, f: [['x', 'X'], ['y', 'Y'], ['ms', '按住时长 ms'], ['d', '之后等待 ms']], def: { ms: 800, d: 300 } },
-    swipe: { n: '滑动', e: '💫', c: 1, f: [['x1', '起点 X'], ['y1', '起点 Y'], ['x2', '终点 X'], ['y2', '终点 Y'], ['ms', '滑动时长 ms'], ['d', '之后等待 ms']], def: { ms: 400, d: 300 } },
+    swipe: { n: '滑动', e: '💫', c: 1, f: [['x1', '起点 X'], ['y1', '起点 Y'], ['x2', '终点 X'], ['y2', '终点 Y'], ['ms', '滑动时长 ms'], ['d', '之后等待 ms']], def: { x1: 50, y1: 70, x2: 50, y2: 30, ms: 400, d: 300 } },
     random: { n: '随机点', e: '🎲', c: 1, f: [['x', '中心 X'], ['y', '中心 Y'], ['r', '随机半径 px'], ['d', '之后等待 ms']], def: { r: 12, d: 300 } },
     wait: { n: '等待', e: '⏳', f: [['ms', '等待 ms']], def: { ms: 1000 } },
     key: { n: '按键', e: '🔘', f: [['k', '按键', 'key'], ['d', '之后等待 ms']], def: { k: 'back', d: 300 } },
@@ -107,7 +108,9 @@
     set: { n: '赋值', e: '📝', f: [['k', '变量名', 'text'], ['v', '值（可写 {{变量}}）', 'var'], ['d', '之后等待 ms']], def: { k: 'n', v: '', d: 100 } },
     math: { n: '运算', e: '🧮', f: [['k', '存到哪个变量', 'text'], ['e', '算式（不用加 {{}}）', 'expr'], ['d', '之后等待 ms']], def: { k: 'n', e: 'n+1', d: 100 } },
     cmpVar: { n: '比变量', e: '⚖️', f: [['l', '左边', 'var'], ['op', '怎么比', 'sel:cmpop'], ['r', '右边', 'var'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { l: 'n', op: '>=', r: '3', go: 0, els: 0, d: 100 } },
-    cond: { n: '条件判断', e: '🧠', f: [['go', '全部/满足 → 跳到第几步'], ['els', '不满足 → 跳到第几步'], ['d', '之后等待 ms']], def: { mode: 0, n: 1, cs: [], rep: 0, repGap: 800, repMax: 10, go: 0, els: 0, d: 100 } }
+    cond: { n: '条件判断', e: '🧠', f: [['go', '全部/满足 → 跳到第几步'], ['els', '不满足 → 跳到第几步'], ['d', '之后等待 ms']], def: { mode: 0, n: 1, cs: [], rep: 0, repGap: 800, repMax: 10, go: 0, els: 0, d: 100 } },
+    // 分组：把一批动作装一起，指定怎么跑。子动作不走步号跳转，但「收工」「重来一轮」会往上传
+    group: { n: '动作分组', e: '🗂', f: [['name', '分组名（给自己看的）', 'text'], ['mode', '怎么跑', 'sel:gmode'], ['d', '之后等待 ms']], def: { name: '', mode: 0, acts: [], d: 100 } }
   };
   var CMP_OP = { '==': '等于', '!=': '不等于', '>': '大于', '>=': '大于等于', '<': '小于', '<=': '小于等于' };
   // 条件类型（v2.0.0）：跟自动精灵一样按「条件」组织，不是一个动作只挂一个判断
@@ -130,8 +133,11 @@
     cntmode: [['add', '往上加'], ['reset', '清零']],
     multi: [['twoTap', '双指齐点'], ['twoLong', '双指按住'], ['pinch', '双指捏合'], ['spread', '双指张开']],
     cmpop: [['==', '等于'], ['!=', '不等于'], ['>', '大于'], ['>=', '大于等于'], ['<', '小于'], ['<=', '小于等于']],
-    cmode: CMODE
+    cmode: CMODE,
+    // 分组的四种跑法
+    gmode: [['0', '👉 按顺序跑'], ['1', '⚡ 同时来（多指）'], ['2', '🔀 打乱顺序'], ['3', '🎲 随机挑一个']]
   };
+  var GMODE_N = ['按顺序', '同时来', '打乱顺序', '随机挑一个'];
   var MULTI_N = { twoTap: '双指齐点', twoLong: '双指按住', pinch: '捏合', spread: '张开' };
   var TG = {
     time: { n: '每天定时', e: '⏰', d: '到点自动跑一次' },
@@ -174,6 +180,11 @@
       case 'math': return (a.k || '?') + ' = ' + (a.e || '');
       case 'cmpVar': return '若 ' + (a.l || '0') + ' ' + (CMP_OP[a.op] || a.op) + ' ' + (a.r || '0')
         + ' → 跳' + jumpTxt(a.go) + '，否则跳' + jumpTxt(a.els);
+      case 'group': {
+        var n = (a.acts || []).length;
+        var gm = GMODE_N[a.mode|0] || '按顺序';
+        return (a.name ? '「' + a.name + '」' : '') + n + ' 个动作 · ' + gm;
+      }
     }
     return '';
   }
@@ -206,6 +217,22 @@
   function findScript(id) {
     for (var i = 0; i < S.scripts.length; i++) if (S.scripts[i].id === id) return S.scripts[i];
     return null;
+  }
+
+  /**
+   * 当前正在编辑的动作数组：可能在脚本根层，也可能在某个分组里。
+   * 返回的是引用，push/splice 会直接改到原对象上（重新赋值不行）。
+   */
+  function curActs() {
+    var s = findScript(S.editId);
+    if (!s) return null;
+    if (S.groupIdx != null) {
+      var g = s.actions[S.groupIdx];
+      if (!g || g.t !== 'group') { S.groupIdx = null; return s.actions; }
+      if (!g.acts) g.acts = [];
+      return g.acts;
+    }
+    return s.actions;
   }
 
   // ---------- 渲染（rAF 节流，连续刷新只画一帧） ----------
@@ -1000,9 +1027,69 @@
     return h;
   }
 
+  /** 分组内页：跟脚本编辑器长得像，但操作的是分组里的子动作 */
+  function viewGroup(s, gi) {
+    var g = s.actions[gi];
+    if (!g || g.t !== 'group') { S.groupIdx = null; return viewEditor(s); }
+    var acts = g.acts || [];
+    var h = '<div class="card"><div class="row">'
+      + '<button class="btn sm ghost" data-act="back">‹ 返回</button>'
+      + '<div class="ic g' + ((gi % 6) + 1) + '" style="width:34px;height:34px;flex:0 0 34px;font-size:16px">🗂</div>'
+      + '<div class="grow"><input id="gname" value="' + esc(g.name || '') + '" placeholder="分组名（给自己看的）"></div>'
+      + '<button class="btn sm ok" data-act="saveGroup">保存</button></div>'
+      + '<label class="f" style="margin-top:10px"><span>这一组怎么跑</span>'
+      + '<select id="gmode">' + gmodeOpts(g.mode | 0) + '</select></label>'
+      + '<div class="tiny muted" id="gmodetip" style="margin-top:6px">' + gmodeTip(g.mode | 0) + '</div>'
+      + '<label class="f" style="margin-top:8px"><span>整组跑完等待 ms</span><input id="gd" type="number" value="' + (g.d == null ? 100 : g.d) + '"></label>'
+      + '</div>';
+
+    h += '<div class="row" style="margin:0 2px 10px"><div class="grow muted">' + acts.length + ' 个子动作'
+      + '<div class="tiny" style="margin-top:2px">分组里的动作不参与步号跳转；但里面的「收工 / 重来一轮」照样管用</div></div>'
+      + '<button class="btn sm ghost" data-act="addAct">＋ 加动作</button></div>';
+    if (!acts.length) {
+      h += '<div class="empty"><span class="e">🗂</span>这组分到还没装东西<br>'
+        + '<span class="tiny">点「＋ 加动作」往里塞</span></div>';
+      return h;
+    }
+    h += '<div class="list' + (window.innerWidth >= 720 ? ' two' : '') + '">';
+    for (var i = 0; i < acts.length; i++) {
+      var a = acts[i], t = TYPES[a.t] || { n: a.t, e: '❔' };
+      h += '<div class="item"><div class="grip" data-drag="' + i + '" data-list="acts">⋮⋮</div>'
+        + '<div class="ic g' + ((i % 6) + 1) + '">' + t.e + '</div>'
+        + '<div class="grow" data-act="editAct" data-id="' + s.id + '" data-i="' + i + '">'
+        + '<div class="t">' + (i + 1) + '. ' + t.n + (a.repeat > 1 ? '<span class="chip">×' + a.repeat + '</span>' : '') + '</div>'
+        + '<div class="d">' + esc(actSummary(a)) + '</div></div>'
+        + '<div class="acts">'
+        + '<button class="btn sm ghost" data-act="mvUp" data-i="' + i + '">↑</button>'
+        + '<button class="btn sm ghost" data-act="mvDn" data-i="' + i + '">↓</button>'
+        + '<button class="btn sm ghost" data-act="dupAct" data-i="' + i + '">⧉</button>'
+        + '<button class="btn sm ghost" data-act="delAct" data-i="' + i + '">✕</button>'
+        + '</div></div>';
+    }
+    return h + '</div>';
+  }
+
+  function gmodeOpts(cur) {
+    var o = OPTS.gmode || [], h = '';
+    for (var i = 0; i < o.length; i++) {
+      h += '<option value="' + esc(o[i][0]) + '"'
+        + (String(cur) === String(o[i][0]) ? ' selected' : '') + '>' + esc(o[i][1]) + '</option>';
+    }
+    return h;
+  }
+
+  function gmodeTip(m) {
+    if (m === 1) return '⚡ 同时来：能变成手势的（点击 / 长按 / 滑动 / 随机点）会合成一次多指手势一起按下去，'
+      + '找色、等待这类没法并行的照常按顺序先跑完。超过系统上限（多数机型 10 个）只发前 10 个。';
+    if (m === 2) return '🔀 打乱顺序：每跑一次顺序都不一样，适合刷视频、随机逛这类不希望轨迹太固定的场景。';
+    if (m === 3) return '🎲 随机挑一个：每次只跑里面随机一个动作。';
+    return '👉 按顺序跑：跟平时一样，从上到下一个个来。';
+  }
+
   function viewEditor(s) {
     if (s.kind === 'js') return viewJsEditor(s);
     S.editId = s.id;                       // 进编辑器就认准这个脚本，动作行上的按钮都靠它定位
+    if (S.groupIdx != null) return viewGroup(s, S.groupIdx);
     var acts = s.actions || [];
     var h = '<div class="card"><div class="row">'
       + '<button class="btn sm ghost" data-act="back">‹ 返回</button>'
@@ -1032,9 +1119,11 @@
     h += '<div class="list' + (window.innerWidth >= 720 ? ' two' : '') + '">';
     for (var i = 0; i < acts.length; i++) {
       var a = acts[i], t = TYPES[a.t] || { n: a.t, e: '❔' };
-      h += '<div class="item"><div class="grip" data-drag="' + i + '" data-list="acts">⋮⋮</div>'
+      // 分组点进去是「进分组里编辑」，不是弹一个普通表单
+      var openAct = a.t === 'group' ? 'editGroup' : 'editAct';
+      h += '<div class="item' + (a.t === 'group' ? ' grouped' : '') + '"><div class="grip" data-drag="' + i + '" data-list="acts">⋮⋮</div>'
         + '<div class="ic g' + ((i % 6) + 1) + '">' + t.e + '</div>'
-        + '<div class="grow" data-act="editAct" data-id="' + s.id + '" data-i="' + i + '">'
+        + '<div class="grow" data-act="' + openAct + '" data-id="' + s.id + '" data-i="' + i + '">'
         + '<div class="t">' + (i + 1) + '. ' + t.n + (a.repeat > 1 ? '<span class="chip">×' + a.repeat + '</span>' : '') + '</div>'
         + '<div class="d">' + esc(actSummary(a)) + '</div></div>'
         + '<div class="acts">'
@@ -1617,7 +1706,27 @@
       }
       case 'stop': ok(call('stop')); setTimeout(refreshAll, 200); break;
       case 'edit': openEditor(id); break;
-      case 'back': S.editId = null; render(); break;
+      case 'back':
+        // 在分组里就先退回脚本层，不在才退回脚本列表
+        if (S.groupIdx != null) { S.groupIdx = null; render(); break; }
+        S.editId = null; render();
+        break;
+      case 'saveGroup': {
+        s = findScript(S.editId);
+        var gg = s && s.actions[S.groupIdx];
+        if (gg && gg.t === 'group') {
+          var nm = document.getElementById('gname');
+          var md = document.getElementById('gmode');
+          var gd = document.getElementById('gd');
+          if (nm) gg.name = nm.value;
+          if (md) gg.mode = +md.value;
+          if (gd) gg.d = num(gd.value, 100);
+          saveScripts();
+          toast('分组改好了');
+        }
+        render();
+        break;
+      }
       case 'save': saveCurrent(); break;
       case 'more': sheetMore(id); break;
       case 'del': s = findScript(id); S.scripts.splice(S.scripts.indexOf(s), 1); saveScripts(); closeSheet(); S.editId = null; render(); break;
@@ -1671,33 +1780,43 @@
         // 必须深拷贝：def 里的 cs 是数组，浅拷贝会让所有动作共用同一个数组，
         // 于是往里加条件就污染了默认值，下一个新建的动作会带着上一个的条件
         for (var k in TYPES[t].def) na[k] = clone(TYPES[t].def[k]);
-        s.actions.push(na);
+        var list = curActs();
+        list.push(na);
         saveScripts();
-        S.editBackup = { i: s.actions.length - 1, json: null };   // null=新建的，取消就删掉
-        sheet(sheetEditAct(s.actions.length - 1));
+        S.editBackup = { i: list.length - 1, json: null };   // null=新建的，取消就删掉
+        sheet(sheetEditAct(list.length - 1));
+        break;
+      case 'editGroup':
+        S.editId = el.dataset.id || S.editId;
+        S.groupIdx = +el.dataset.i;      // 进分组里编辑子动作
+        render();
         break;
       case 'editAct':
         S.editId = el.dataset.id || S.editId;   // 用按钮上带的脚本 id，别依赖上一次的编辑状态
-        S.editBackup = { i: +el.dataset.i, json: JSON.stringify(findScript(S.editId).actions[+el.dataset.i] || {}) };
+        S.editBackup = { i: +el.dataset.i, json: JSON.stringify((curActs() || [])[+el.dataset.i] || {}) };
         sheet(sheetEditAct(+el.dataset.i));
         break;
-      case 'testAct': ok(call('testAction', JSON.stringify(findScript(S.editId).actions[+el.dataset.i]))); break;
-      case 'mvUp':
-        s = findScript(S.editId); var i1 = +el.dataset.i;
-        if (i1 > 0) { var tmp = s.actions[i1 - 1]; s.actions[i1 - 1] = s.actions[i1]; s.actions[i1] = tmp; saveScripts(); render(); }
+      case 'testAct': ok(call('testAction', JSON.stringify((curActs() || [])[+el.dataset.i]))); break;
+      case 'mvUp': {
+        var L1 = curActs(); var i1 = +el.dataset.i;
+        if (L1 && i1 > 0) { var tmp = L1[i1 - 1]; L1[i1 - 1] = L1[i1]; L1[i1] = tmp; saveScripts(); render(); }
         break;
-      case 'mvDn':
-        s = findScript(S.editId); var i2 = +el.dataset.i;
-        if (i2 < s.actions.length - 1) { var t2 = s.actions[i2 + 1]; s.actions[i2 + 1] = s.actions[i2]; s.actions[i2] = t2; saveScripts(); render(); }
+      }
+      case 'mvDn': {
+        var L2 = curActs(); var i2 = +el.dataset.i;
+        if (L2 && i2 < L2.length - 1) { var t2 = L2[i2 + 1]; L2[i2 + 1] = L2[i2]; L2[i2] = t2; saveScripts(); render(); }
         break;
-      case 'dupAct':
-        s = findScript(S.editId); var i3 = +el.dataset.i;
-        s.actions.splice(i3 + 1, 0, JSON.parse(JSON.stringify(s.actions[i3])));
-        saveScripts(); render();
+      }
+      case 'dupAct': {
+        var L3 = curActs(); var i3 = +el.dataset.i;
+        if (L3) { L3.splice(i3 + 1, 0, JSON.parse(JSON.stringify(L3[i3]))); saveScripts(); render(); }
         break;
-      case 'delAct':
-        s = findScript(S.editId); s.actions.splice(+el.dataset.i, 1); saveScripts(); render();
+      }
+      case 'delAct': {
+        var L4 = curActs();
+        if (L4) { L4.splice(+el.dataset.i, 1); saveScripts(); render(); }
         break;
+      }
       case 'saveAct': S.editBackup = null; saveAct(+el.dataset.i); break;
       case 'cancelAct':
         // 只有「动作编辑器」的取消才回滚；换图标/分享码这类弹层的取消不动数据
@@ -1708,7 +1827,7 @@
       case 'pickPoint': picked = null; sheet(sheetPickPoint(+el.dataset.i)); bindCanvas(); break;
       case 'usePoint':
         if (!picked) { toast('先在图上点一下'); return; }
-        s = findScript(S.editId); var a2 = s.actions[+el.dataset.i] || {};
+        var a2 = (curActs() || [])[+el.dataset.i] || {};
         var pctMode = !!a2.pct;
         sheet(sheetEditAct(+el.dataset.i));
         var ins = document.querySelectorAll('#sheet [data-field]');
@@ -1832,6 +1951,12 @@
       if (w) w.style.display = (+el.value === 2 ? '' : 'none');
       return;
     }
+    // 分组内页选跑法时，下面的说明要跟着换
+    if (el.id === 'gmode') {
+      var tip = document.getElementById('gmodetip');
+      if (tip) tip.textContent = gmodeTip(+el.value);
+      return;
+    }
     if (!el.dataset.pref) return;
     var v = el.value;
     if (el.type === 'range') {
@@ -1878,13 +2003,14 @@
   }
 
   function saveAct(i) {
-    var s = findScript(S.editId);
-    var a = s.actions[i];
+    var list = curActs();
+    if (!list) return;
+    var a = list[i];
     var fields = document.querySelectorAll('#sheet [data-field]');
     for (var q = 0; q < fields.length; q++) {
       var f = fields[q], k = f.dataset.field;
       if (f.classList.contains('switch')) { a[k] = swVal(k, f.classList.contains('on')); continue; }
-      if (f.tagName === 'SELECT') { a[k] = f.value; continue; }
+      if (f.tagName === 'SELECT') { a[k] = (k === 'mode') ? +f.value : f.value; continue; }  // 跑法是数字
       var raw = f.value;
       if (fieldIsText(a.t, k)) { a[k] = raw; continue; }
       // 数字字段：能转就转，转不了（比如填的是 {{lastX}}）就原样留着

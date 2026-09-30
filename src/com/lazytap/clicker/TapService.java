@@ -21,6 +21,8 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Toast;
 
+import java.util.List;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -186,6 +188,31 @@ public class TapService extends AccessibilityService {
         } catch (Throwable t) {
             Bus.emit("log", "多指手势失败：" + t.getMessage());
         }
+    }
+
+    /**
+     * 把一批路径当成「多指」一次性派发出去，用于分组的「同时」模式。
+     * 返回派发了几条；系统对手势条数有上限（多数机型 10 条），超了会被拒，所以调用前要自己夹。
+     */
+    public int strokes(List<Path> ps, long ms) {
+        if (ps == null || ps.isEmpty()) return 0;
+        long d = ms < 60 ? 60 : ms;
+        try {
+            GestureDescription.Builder b = new GestureDescription.Builder();
+            for (Path p : ps) {
+                if (p == null) continue;
+                b.addStroke(new GestureDescription.StrokeDescription(p, 0, d));
+            }
+            return dispatchGesture(b.build(), null, null) ? ps.size() : 0;
+        } catch (Throwable t) {
+            Bus.emit("log", "多指手势失败：" + t.getMessage());
+            return 0;
+        }
+    }
+
+    /** 这台机器一次最多能派发几条手势（超出会被系统拒绝） */
+    public static int maxStrokes() {
+        return GestureDescription.getMaxStrokeCount();
     }
 
     private static Path path(float x1, float y1, float x2, float y2) {

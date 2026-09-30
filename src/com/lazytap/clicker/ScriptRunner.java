@@ -228,6 +228,145 @@ public final class ScriptRunner {
         h.postDelayed(this::step, Math.max(16, wait));
     }
 
+    // ---------- 动作分组 ----------
+    // 分组把一批动作装到一起，可以指定怎么跑：顺序 / 同时 / 乱序 / 随机挑一个。
+    // 子动作里的跳转（go/els）只在分组内没意义，直接忽略；但「收工」「重来一轮」
+    // 这两种是要往上传的，不然分组里的停止条件就失效了。
+
+    private static final int G_SEQ = 0, G_ALL = 1, G_SHUFFLE = 2, G_ANY = 3;
+
+    private int execGroup(TapService svc, JSONObject a) {
+        JSONArray acts = a.optJSONArray("acts");
+        if (acts == null || acts.length() == 0) {
+            log("这个分组是空的，跳过");
+            return 0;
+        }
+        int mode = a.optInt("mode", G_SEQ);
+        String name = a.optString("name", "");
+        String tag = name.isEmpty() ? "" : "「" + name + "」";
+
+        switch (mode) {
+            case G_ALL:
+                log("分组" + tag + "：同时来（" + acts.length() + " 个）");
+                return execGroupTogether(svc, acts);
+            case G_SHUFFLE:
+                log("分组" + tag + "：打乱顺序跑（" + acts.length() + " 个）");
+                return execGroupSeq(svc, shuffled(acts));
+            case G_ANY: {
+                int k = rnd.nextInt(acts.length());
+                JSONObject one = acts.optJSONObject(k);
+                log("分组" + tag + "：随机挑了第 " + (k + 1) + " 个来跑");
+                return one == null ? 0 : runSub(svc, one);
+            }
+            default:
+                log("分组" + tag + "：按顺序跑（" + acts.length() + " 个）");
+                return execGroupSeq(svc, acts);
+        }
+    }
+
+    private int execGroupSeq(TapService svc, JSONArray acts) {
+        for (int i = 0; i < acts.length(); i++) {
+            if (!running) return 0;
+            JSONObject sub = acts.optJSONObject(i);
+            int j = runSub(svc, sub);
+            if (j == JUMP_END || j == JUMP_LOOP) return j;   // 只有这两种要往上传
+        }
+        return 0;
+    }
+
+    /**
+     * 「同时」：手势类的动作合成一次多指手势派出去，其余（找色、等待、赋值…）
+     * 按原顺序先跑完——它们本来就没法并行。
+     */
+    private int execGroupTogether(TapService svc, JSONArray acts) {
+        List<Path> paths = new ArrayList<>();
+        for (int i = 0; i < acts.length(); i++) {
+            if (!running) return 0;
+            JSONObject sub = acts.optJSONObject(i);
+            if (sub == null) continue;
+            Path p = pathOf(svc, sub);
+            if (p != null) {
+                paths.add(p);
+                continue;
+            }
+            int j = runSub(svc, sub);          // 不是手势，照常跑
+            if (j == JUMP_END || j == JUMP_LOOP) return j;
+        }
+        if (paths.isEmpty()) return 0;
+        int max = TapService.maxStrokes();
+        if (paths.size() > max) {
+            log("同时派的手势有 " + paths.size() + " 条，超过系统上限 " + max + " 条，只发前 " + max + " 条");
+            paths = paths.subList(0, max);
+        }
+        long ms = 0;
+        for (int i = 0; i < acts.length(); i++) {
+            long d = acts.optJSONObject(i) == null ? 0 : acts.optJSONObject(i).optLong("ms", 0);
+            if (d > ms) ms = d;
+        }
+        int n = svc.strokes(paths, ms < 60 ? 80 : ms);
+        log("同时派发 " + n + " 条手势");
+        return 0;
+    }
+
+    /** 跑一个子动作，把异常兜住——分组里一个动作出错不该把整条脚本带走 */
+    private int runSub(TapService svc, JSONObject sub) {
+        if (sub == null) return 0;
+        try {
+            return exec(vars.bind(sub));
+        } catch (Throwable t) {
+            log("分组里的动作出错：" + t.getMessage());
+            return 0;
+        }
+    }
+
+    /** 手势类动作能不能转成一条路径；不能（比如找色、等待）就返回 null */
+    private Path pathOf(TapService svc, JSONObject a) {
+        if (a == null) return null;
+        String t = a.optString("t", "");
+        boolean pct = pctOn(a);
+        float w = svc.screenW(), h = svc.screenH();
+        Path p = new Path();
+        if ("click".equals(t) || "long".equals(t) || "random".equals(t)) {
+            float x = (float) a.optDouble("x", 0), y = (float) a.optDouble("y", 0);
+            if (pct) { x = x / 100f * w; y = y / 100f * h; }
+            if ("random".equals(t)) {
+                float r = (float) a.optDouble("r", 10);
+                if (pct) r = r / 100f * w;
+                x += (rnd.nextFloat() * 2 - 1) * r;
+                y += (rnd.nextFloat() * 2 - 1) * r;
+            }
+            p.moveTo(x, y);
+            return p;
+        }
+        if ("swipe".equals(t)) {
+            float x1 = (float) a.optDouble("x1", 0), y1 = (float) a.optDouble("y1", 0);
+            float x2 = (float) a.optDouble("x2", 0), y2 = (float) a.optDouble("y2", 0);
+            if (pct) {
+                x1 = x1 / 100f * w; y1 = y1 / 100f * h;
+                x2 = x2 / 100f * w; y2 = y2 / 100f * h;
+            }
+            p.moveTo(x1, y1);
+            p.lineTo(x2, y2);
+            return p;
+        }
+        return null;
+    }
+
+    /** 打乱一个数组（Fisher-Yates），返回新数组，不动原来的 */
+    private JSONArray shuffled(JSONArray src) {
+        JSONArray out = new JSONArray();
+        List<JSONObject> list = new ArrayList<>();
+        for (int i = 0; i < src.length(); i++) list.add(src.optJSONObject(i));
+        for (int i = list.size() - 1; i > 0; i--) {
+            int j = rnd.nextInt(i + 1);
+            JSONObject tmp = list.get(i);
+            list.set(i, list.get(j));
+            list.set(j, tmp);
+        }
+        for (JSONObject o : list) out.put(o);
+        return out;
+    }
+
     /** 返回值：0 继续下一步；>0 跳到第 N 步；-1 结束；-2 立刻重来一轮 */
     private static final int JUMP_END = -1;
     private static final int JUMP_LOOP = -2;
@@ -244,6 +383,8 @@ public final class ScriptRunner {
                 return execIf(svc, a);
             case "cond":
                 return execCond(svc, a);
+            case "group":
+                return execGroup(svc, a);
             case "set":
                 return execSet(a);
             case "math":

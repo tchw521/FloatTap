@@ -100,6 +100,13 @@ App 不在前台也生效，重启后自动重排；同一条规则 8 秒冷却�
 还能开**重复检查直到成功** —— 条件不成立就按间隔反复试，试满上限还不成就走「不满足」那条路。
 老的 `如果 / 找色 / 比色 / 找图 / 比变量 / 计数` 步号跳转**原样保留**，两套并联混用都行。
 
+**动作分组（v2.1.0）**：把一批动作装进一个「动作分组」，再指定这组怎么跑。
+四种跑法：**按顺序**（默认）、**同时来**（点击 / 长按 / 滑动合成一次多指手势一起按下）、
+**打乱顺序**（每次顺序都不一样）、**随机挑一个**（每次只跑里面随机一个）。
+「同时」是真的多指 —— 用 `GestureDescription` 一次派发多条 stroke，系统层面就是一次多点触控，
+不是开几个线程分别点；超过系统上限（多指机型 10 条，用 `getMaxStrokeCount()` 取真实值）会截断并提示。
+分组里**没有步号跳转**（子动作填的「跳到第几步」会被忽略），但「收工 / 重来一轮」照样管用。
+
 **分享码（v1.8.0）**：脚本菜单里「🔗 生成分享码」得到一串 `LT1.` 开头的文本，复制发给别人，
 对方在「🏪 脚本市场」里点「📥 导入分享码」贴进去就能用；「📤 导出全部」把全部脚本打成一个码，
 换手机时特别省事。导入时重名自动改名、id 重新生成，**不会盖掉你已有的脚本**。
@@ -192,8 +199,8 @@ assets/www/                   界面（index.html / app.js / style.css）
 
 ```bash
 export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-tools/34.0.0
-./build.sh 2.0.1 12                       # 参数：版本名 版本码
-# 产出 out/LazyTap-v2.0.1.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
+./build.sh 2.1.0 13                       # 参数：版本名 版本码
+# 产出 out/LazyTap-v2.1.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
 ```
 
 > 无网络时也能构建：整条流水线只依赖本地 Android SDK 和 JDK，不下载任何依赖。
@@ -201,7 +208,7 @@ export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-
 换自己的签名密钥时用环境变量传，不用改脚本：
 
 ```bash
-KS_ALIAS=mykey KS_PASS=xxx KEY_PASS=xxx ./build.sh 2.0.1 12
+KS_ALIAS=mykey KS_PASS=xxx KEY_PASS=xxx ./build.sh 2.1.0 13
 ```
 
 ### 云端构建（GitHub Actions）
@@ -221,8 +228,8 @@ KS_ALIAS=mykey KS_PASS=xxx KEY_PASS=xxx ./build.sh 2.0.1 12
 ### 跑测试
 
 ```bash
-bash tools/test/run-tests.sh      # 纯 Java 单测 104 项，只要装了 JDK 就能跑，不需要模拟器
-cd tools/smoke && npm i && node run.js   # UI 冒烟 78 张截图，需要 chromium
+bash tools/test/run-tests.sh      # 纯 Java 单测 213 项，只要装了 JDK 就能跑，不需要模拟器
+cd tools/smoke && npm i && node run.js   # UI 冒烟 88 张截图，需要 chromium
 ```
 
 ---
@@ -232,7 +239,7 @@ cd tools/smoke && npm i && node run.js   # UI 冒烟 78 张截图，需要 chrom
 **已验证**
 
 - 十一版 APK 均通过 `apksigner verify`，`aapt2 dump badging` 显示包名、版本、权限、组件声明正确
-- **纯 Java 单测 104 项**（条件系统 71 + 分享码 33），零 Android 依赖，CI 里每次提交都跑：
+- **纯 Java 单测 213 项**，零 Android 依赖，CI 里每次提交都跑：
   条件语义（and/or/count、8 种条件类型、重复检查、参数夹取、停止中断、日志明细）、
   分享码往返（含 v2.0.0 新增的嵌套 `cs` 数组、中文/emoji/JS 代码、脏数据与坏码容错）
 - **交叉对账了界面与引擎的字段形态**：把界面存的每个字段类型和引擎读取方式全量比对，

@@ -363,3 +363,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
 .conditem .ct{flex:1;min-width:0;font-size:13px}
 .conditem .cd{font-size:11px;color:var(--sub);margin-top:2px}
 .cond .tiny{color:var(--sub)}
+
+/* v2.1.0 动作分组：列表里分组行加个内缩标记，一眼看出这是能展开的 */
+.item.grouped{border-left:3px solid var(--acc,#ff8a3d)}
+.item.grouped .ic{box-shadow:0 4px 12px rgba(255,138,61,.24)}

@@ -39,6 +39,10 @@ echo "==> 条件系统（C）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" C.java
 java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" C | tail -2
 
+echo "==> 动作分组（G）"
+javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" G.java
+java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" G | tail -2
+
 echo "==> 分享码（S + 真实 Share）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/Share.java" S.java
 java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" S | tail -2
