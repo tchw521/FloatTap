@@ -47,6 +47,7 @@ const MOCK_SRC = `() => {
     triggers: () => JSON.stringify(triggers),
     saveTriggers: () => 'ok',
     fireTrigger: () => 'ok',
+    togglePause: () => 'paused',   // v2.5.0：暂停⇄恢复，前端点了不能炸
     curApp: () => 'com.tencent.mm',
     status: () => JSON.stringify({ running: false, current: '', acc: true, overlay: true,
       recording: true, touch: true, ball: true, log: logs, screen: { w: 1080, h: 1920 },

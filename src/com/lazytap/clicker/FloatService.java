@@ -70,6 +70,8 @@ public class FloatService extends Service {
     private View runBar;
     private WindowManager.LayoutParams runParams;
     private TextView runName, runProg;
+    /** v2.5.0：暂停/恢复按钮，文案随状态在 ⏸/▶ 之间切 */
+    private TextView runPause;
     private boolean runDismissed;   // 本次运行里手动收起了，下次开跑再出来
     private boolean lastBusy;
     private float runSx, runSy;
@@ -432,7 +434,7 @@ public class FloatService extends Service {
      * 所以它能拖到任意位置，也能单独收起。
      */
     private void syncRunBar() {
-        boolean busy = ScriptRunner.get().isRunning() || JsEngine.get().isBusy();
+        boolean busy = ScriptRunner.get().isBusy() || JsEngine.get().isBusy();
         if (busy && !lastBusy) runDismissed = false;  // 新一轮开始，上一次的「收起」作废
         lastBusy = busy;
         boolean want = busy && !runDismissed && Prefs.getBool("runOverlay", true);
@@ -465,6 +467,12 @@ public class FloatService extends Service {
         zone.addView(runName);
         zone.addView(runProg);
         root.addView(zone);
+        // v2.5.0：暂停⇄恢复。JS 脚本跑着时这个按钮会被藏起来（JS 暂不支持暂停）
+        runPause = barBtn("⏸ 暂停", "#F39C12", () -> {
+            ScriptRunner.get().togglePause();
+            refresh();
+        });
+        root.addView(runPause);
         root.addView(barBtn("■ 停止", () -> {
             ScriptRunner.get().stop();
             JsEngine.get().stop();
@@ -540,6 +548,7 @@ public class FloatService extends Service {
             runBar = null;
             runName = null;
             runProg = null;
+            runPause = null;
         }
     }
 
@@ -553,6 +562,7 @@ public class FloatService extends Service {
             runBar = null;
             runName = null;
             runProg = null;
+            runPause = null;
         }
     }
 
@@ -570,7 +580,11 @@ public class FloatService extends Service {
         if (runName == null || runProg == null) return;
         ScriptRunner r = ScriptRunner.get();
         String nm, pr;
-        if (r.isRunning()) {
+        if (r.isPaused()) {
+            // v2.5.0：暂停要一眼看出来，别让用户以为脚本还在跑
+            nm = "⏸ " + r.currentName();
+            pr = "已暂停 · 点「▶ 恢复」或音量键短按继续";
+        } else if (r.isRunning()) {
             nm = "🏃 " + r.currentName();
             pr = r.hasProgress()
                     ? ("第 " + r.progressCur() + "/" + r.progressTotal() + " 步")
@@ -583,6 +597,12 @@ public class FloatService extends Service {
         pr += " · 已跑 " + (s >= 60 ? (s / 60) + "分" + (s % 60) + "秒" : s + "秒");
         runName.setText(nm);
         runProg.setText(pr);
+        if (runPause != null) {
+            // 引擎忙才显示暂停键；JS 模式（引擎闲、JS 忙）藏起来——v2.5.0 不暂停 JS
+            boolean engineBusy = r.isBusy();
+            runPause.setVisibility(engineBusy ? View.VISIBLE : View.GONE);
+            runPause.setText(r.isPaused() ? "▶ 恢复" : "⏸ 暂停");
+        }
     }
 
     /** 拖完夹回屏幕内，并记住位置 */
@@ -672,7 +692,7 @@ public class FloatService extends Service {
             return;
         }
         buzz();
-        if (ScriptRunner.get().isRunning()) {
+        if (ScriptRunner.get().isBusy()) {   // 暂停中的也要先停掉再开新的
             ScriptRunner.get().stop();
             toast("先停下，再开始");
         }
@@ -852,10 +872,12 @@ public class FloatService extends Service {
             if (w <= 0 || hh <= 0) return;
             String state = "点";
             int color = idleColor();
-            boolean busy = ScriptRunner.get().isRunning();
+            boolean busy = ScriptRunner.get().isBusy();
             if (busy) {
-                state = "跑";
-                color = Color.parseColor("#2ECC71");
+                // v2.5.0：暂停单独一态，别让用户以为还在跑
+                state = ScriptRunner.get().isPaused() ? "暂" : "跑";
+                color = ScriptRunner.get().isPaused()
+                        ? Color.parseColor("#F39C12") : Color.parseColor("#2ECC71");
             } else if (TapService.get() != null && TapService.get().isRecording()) {
                 state = "录";
                 color = Color.parseColor("#E74C3C");

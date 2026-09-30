@@ -19,7 +19,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # 把要测的源码剥掉 package 放到 out/ 下，测的是真代码
-for f in Expr Vars Share LogLine HotKey Timing NodeMatch; do
+for f in Expr Vars Share LogLine HotKey Timing NodeMatch RunState; do
   sed 's/^package com\.lazytap\.clicker;//' "$SRC/$f.java" > "$OUT/$f.java"
 done
 
@@ -54,6 +54,10 @@ java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" L | tail -2
 echo "==> 音量键急停（K + 真实 HotKey）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/HotKey.java" K.java
 java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" K | tail -2
+
+echo "==> 运行三态（R + 真实 RunState，含真线程的挂起/唤醒）"
+javac -nowarn -encoding UTF-8 -d "$OUT" "$OUT/RunState.java" R.java
+java -Dfile.encoding=UTF-8 -cp "$OUT" R | tail -2
 
 echo "==> 等待与超时（W + 真实 Timing）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/Timing.java" W.java

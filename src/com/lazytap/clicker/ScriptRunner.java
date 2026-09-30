@@ -39,7 +39,8 @@ public final class ScriptRunner {
     // 异常被上层吞掉后整个状态面板会缺一块
     private final List<LogLine> logs = new CopyOnWriteArrayList<>();
 
-    private volatile boolean running;
+    /** v2.5.0：运行三态（停止/运行/暂停）。以前是 volatile boolean running，暂停做不了 */
+    private final RunState rs = new RunState();
     private volatile String currentId = "";
     /** v2.2.0：运行浮层与日志面板要显示「第几步 / 共几步」，这两个值给外部读 */
     private volatile int progCur, progTotal;
@@ -82,7 +83,17 @@ public final class ScriptRunner {
     }
 
     public boolean isRunning() {
-        return running;
+        return rs.isRunning();
+    }
+
+    /** v2.5.0：暂停中。暂停时悬浮球、日志面板、磁贴都要能看出来 */
+    public boolean isPaused() {
+        return rs.isPaused();
+    }
+
+    /** v2.5.0：有事在做（跑着或暂停都算）。外部「要不要停/要不要显示」一律用它 */
+    public boolean isBusy() {
+        return rs.isBusy();
     }
 
     public String currentId() {
@@ -192,7 +203,7 @@ public final class ScriptRunner {
         int loops = sc.optInt("loopCount", 1);
         boolean forever = on(sc, "loop", false);
         loopLeft = forever ? -1 : Math.max(1, loops);
-        running = true;
+        rs.start();
         index = 0;
         repeatLeft = 0;
         counters.clear();
@@ -223,8 +234,8 @@ public final class ScriptRunner {
     }
 
     public void stop() {
-        boolean was = running;
-        running = false;
+        boolean was = rs.isBusy();   // 暂停里也能急停，都算「有东西在跑」
+        rs.stop();                   // 停了要叫醒挂着的 gate/sleep，不然线程吊死
         repeatLeft = 0;
         if (h != null) h.removeCallbacksAndMessages(null);
         if (was) log("停下了");   // 手动刹车也要留痕，不然日志里看不出是自己停的还是跑完的
@@ -239,6 +250,32 @@ public final class ScriptRunner {
         shotAt = 0;
     }
 
+    /** v2.5.0：暂停。跑到哪一步记住哪一步，恢复从断点继续；JS 模式不做暂停 */
+    public void pause() {
+        if (jsMode) {
+            log("JS 脚本暂不支持暂停，要停就按停止");
+            return;
+        }
+        if (rs.pause()) {
+            log("暂停了（音量键短按或点「▶ 恢复」继续）");
+            status("paused", "");
+        }
+    }
+
+    /** v2.5.0：恢复。把 step 循环从挂起里放出来 */
+    public void resume() {
+        if (rs.resume()) {
+            log("继续跑");
+            status("running", "resume");
+        }
+    }
+
+    /** v2.5.0：暂停⇄恢复一键切换（音量键短按和浮层按钮都走这里） */
+    public void togglePause() {
+        if (rs.isPaused()) resume();
+        else pause();
+    }
+
     private float speed() {
         return Timing.speed(Prefs.getFloat("speed", 1f));
     }
@@ -248,7 +285,10 @@ public final class ScriptRunner {
     }
 
     private void step() {
-        if (!running) return;
+        // v2.5.0：只有真停了才收工。暂停不能在这里 return——那是把循环掐死，
+        // 恢复就没人接了；要挂在这等，恢复后从当前这步原样继续。
+        if (rs.isStopped()) return;
+        rs.gate();
         progTotal = actions.length();
         if (index >= actions.length()) {
             if (loopLeft == -1 || loopLeft > 1) {
@@ -260,7 +300,7 @@ public final class ScriptRunner {
                 h.postDelayed(this::step, Math.max(50, (long) (300 * speed())));
                 return;
             }
-            running = false;
+            rs.stop();
             progCur = progTotal;
             log("跑完收工，手指保住了");
             status("stopped", "done");
@@ -288,7 +328,7 @@ public final class ScriptRunner {
             logE("动作出错：" + t.getMessage());
         }
         if (jump == JUMP_END) {          // 直接收工
-            running = false;
+            rs.stop();
             log("按剧本收工");
             status("stopped", "done");
             return;
@@ -346,7 +386,8 @@ public final class ScriptRunner {
 
     private int execGroupSeq(TapService svc, JSONArray acts) {
         for (int i = 0; i < acts.length(); i++) {
-            if (!running) return 0;
+            rs.gate();                                  // 暂停挂起，恢复从当前子步继续
+            if (!rs.isRunning()) return 0;
             JSONObject sub = acts.optJSONObject(i);
             int j = runSub(svc, sub);
             if (j == JUMP_END || j == JUMP_LOOP) return j;   // 只有这两种要往上传
@@ -361,7 +402,8 @@ public final class ScriptRunner {
     private int execGroupTogether(TapService svc, JSONArray acts) {
         List<Path> paths = new ArrayList<>();
         for (int i = 0; i < acts.length(); i++) {
-            if (!running) return 0;
+            rs.gate();
+            if (!rs.isRunning()) return 0;
             JSONObject sub = acts.optJSONObject(i);
             if (sub == null) continue;
             Path p = pathOf(svc, sub);
@@ -408,7 +450,8 @@ public final class ScriptRunner {
     /**
      * 分组内的等待：只能同步睡，因为子动作是串行循环跑的。
      * 这里卡上限 5 秒——睡在无障碍回调线程上，太久会被系统当成服务无响应。
-     * 副作用：这一段时间内点「停止」要等它睡醒（循环每步都查 running，最多多等 5 秒）。
+     * v2.5.0：换成 rs.sleep，暂停能立刻挂起（时长不吃掉）、急停 100ms 内响应，
+     * 不再是 v2.3.0 注释里那个「点停止要等睡醒」的坑。
      */
     private void groupWait(JSONObject a) {
         if (Timing.groupClamped(a, speed())) {
@@ -417,11 +460,7 @@ public final class ScriptRunner {
         long ms = Timing.groupWait(a, speed());
         if (ms <= 0) return;
         log("在分组里等 " + ms + "ms");
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        rs.sleep(ms);   // 返回 false（被急停）也无所谓，下一个检查点自然退出
     }
 
     /** 手势类动作能不能转成一条路径；不能（比如找色、等待）就返回 null */
@@ -479,7 +518,7 @@ public final class ScriptRunner {
     private int exec(JSONObject a) {
         TapService svc = TapService.get();
         if (svc == null) {
-            running = false;
+            rs.stop();
             return JUMP_END;
         }
         String t = a.optString("t", "click");
@@ -540,7 +579,8 @@ public final class ScriptRunner {
                     final float fx = x, fy = y;
                     svc.tap(fx, fy, 60);
                     h.postDelayed(() -> {
-                        if (!running) return;
+                        rs.gate();               // 暂停卡在两击之间：恢复后把第二击补上
+                        if (rs.isStopped()) return;
                         TapService s2 = TapService.get();
                         if (s2 != null) s2.tap(fx, fy, 60);
                     }, 110);
@@ -620,7 +660,7 @@ public final class ScriptRunner {
                 } else {
                     logW("没找到 " + q.describe() + "，跳过");
                     if (script != null && on(script, "stopOnFail", false)) {
-                        running = false;
+                        rs.stop();
                         logE("按剧本：找不到就收工");
                         status("stopped", "fail");
                         return JUMP_END;
@@ -636,7 +676,7 @@ public final class ScriptRunner {
 
     /**
      * 在 timeout 内反复找同一个节点，找到就返回（调用方负责点它和 recycle）。
-     * 每片都检查一次 running，所以「停止」最多延迟一片（250ms）生效——
+     * 每片都过一次暂停闸口和停止检查，所以「暂停」「停止」最多延迟一片（250ms）生效——
      * 比原来那种 postDelayed 一次就不管了的做法可控得多。
      */
     private AccessibilityNodeInfo waitFind(TapService svc, NodeMatch q,
@@ -658,20 +698,17 @@ public final class ScriptRunner {
     }
 
     /**
-     * 每隔 FIND_SLICE 探一次，直到命中或超时。每片都查一次 running，
-     * 所以「停止」最多延迟一片生效；探测抛异常就收手，免得日志刷屏。
+     * 每隔 FIND_SLICE 探一次，直到命中或超时。每片开头都过一次暂停闸口和停止检查，
+     * 所以「暂停」「停止」最多延迟一片（250ms）生效；探测抛异常就收手，免得日志刷屏。
      */
     private <T> T pollUntil(long deadline, String what, Probe<T> p) {
-        while (running) {
+        while (true) {
+            rs.gate();                       // 暂停挂起，恢复后接着探（deadline 是墙钟，暂停久了可能一恢复就超时）
+            if (rs.isStopped()) return null;
             long left = deadline - System.currentTimeMillis();
             if (left <= 0) return null;
-            try {
-                Thread.sleep(Math.min(Timing.FIND_SLICE, left));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
-            }
-            if (!running) return null;
+            rs.sleep(Math.min(Timing.FIND_SLICE, left));   // 急停会在片内提前醒
+            if (!rs.isRunning()) return null;
             try {
                 T r = p.get();
                 if (r != null) return r;
@@ -680,7 +717,6 @@ public final class ScriptRunner {
                 return null;
             }
         }
-        return null;
     }
 
     private static String MULTI_NAME(String m) {
@@ -748,8 +784,9 @@ public final class ScriptRunner {
         boolean hit = false;
         int round = 0;
         while (true) {
-            // 每轮开头都看一眼：点「停止」时要立刻收手，不能把这一觉睡完
-            if (!running) {
+            // 每轮开头过闸口：暂停就挂起（恢复后接着验），急停立刻收手
+            rs.gate();
+            if (rs.isStopped()) {
                 log("已经停了，条件检查中断");
                 return 0;
             }
@@ -758,25 +795,14 @@ public final class ScriptRunner {
             hit = r[0] == 1;
             if (hit || !repeat || round >= max) break;
             log("条件没成，等 " + gap + "ms 再试（第 " + round + "/" + max + " 次）");
-            // 切成小片睡：一觉睡满 gap（最长 20 秒）的话，这期间点「停止」要等这一觉睡完才响应，
-            // 用户会觉得卡死了。每 100ms 醒一次看有没有被叫停。
-            long left = gap;
-            while (left > 0) {
-                if (!running) {
-                    log("已经停了，条件检查中断");
-                    return 0;
-                }
-                long slice = Math.min(100, left);
-                try {
-                    Thread.sleep(slice);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return 0;
-                }
-                left -= slice;
+            // v2.5.0：rs.sleep 自带 100ms 切片、暂停挂起、急停提前醒。
+            // 以前是手写切片循环，暂停进不来，停止也要等下一片。
+            if (!rs.sleep(gap)) {
+                log("已经停了，条件检查中断");
+                return 0;
             }
         }
-        if (!running) {
+        if (rs.isStopped()) {
             log("已经停了，条件检查中断");
             return 0;
         }
@@ -1215,7 +1241,7 @@ public final class ScriptRunner {
     private volatile boolean jsMode;
 
     public boolean isJsMode() {
-        return jsMode && running;
+        return jsMode && rs.isRunning();
     }
 
     /** JS 脚本开跑：把状态准备好，但不启动 step 循环——节奏交给 JS 自己控制 */
@@ -1249,7 +1275,7 @@ public final class ScriptRunner {
         ScriptStore.touchRun(script);
         Prefs.put("lastScript", currentId);
         jsMode = true;
-        running = true;
+        rs.start();
         String name = script.optString("name", "未命名");
         log("开跑（JS）：" + name);
         status("running", name);
@@ -1258,7 +1284,7 @@ public final class ScriptRunner {
 
     public void stopJs() {
         jsMode = false;
-        running = false;
+        rs.stop();
         repeatLeft = 0;
         if (h != null) h.removeCallbacksAndMessages(null);
         if (listener != null && !currentId.isEmpty()) status("stopped", "");
@@ -1280,7 +1306,7 @@ public final class ScriptRunner {
         h.post(() -> {
             JSONObject r = new JSONObject();
             try {
-                if (!running || !jsMode) {
+                if (!rs.isRunning() || !jsMode) {
                     r.put("err", "已经停了");
                 } else {
                     lastHit = null;
@@ -1301,7 +1327,7 @@ public final class ScriptRunner {
                         r.put("sim", lastHit[2]);
                     }
                     long wait = delayAfter(b);
-                    if (wait > 0 && running) Thread.sleep(Math.min(wait, 30000L));
+                    if (wait > 0 && rs.isRunning()) rs.sleep(Math.min(wait, 30000L));
                 }
             } catch (Throwable t) {
                 try {

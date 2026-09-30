@@ -155,12 +155,21 @@ public class TapService extends AccessibilityService {
      */
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
-        boolean busy = ScriptRunner.get().isRunning() || JsEngine.get().isBusy();
-        if (HotKey.wantStop(event.getKeyCode(), HotKey.isDown(event.getAction()),
-                Prefs.getBool("volStop", false), busy)) {
+        // v2.5.0 三态：引擎忙（跑着或暂停）→ 短按切暂停/恢复、长按急停；
+        // 只有 JS 在跑 → 按一下急停；都没跑 → 放行，音量归系统管。
+        String act = HotKey.action(event.getKeyCode(), HotKey.isDown(event.getAction()),
+                event.getRepeatCount(), Prefs.getBool("volStop", false),
+                ScriptRunner.get().isBusy(), JsEngine.get().isBusy());
+        if (HotKey.TOGGLE.equals(act)) {
+            ScriptRunner.get().togglePause();
+            if (FloatService.get() != null) FloatService.get().refresh();
+            return true;
+        }
+        if (HotKey.STOP.equals(act)) {
             ScriptRunner.get().stop();
             JsEngine.get().stop();
-            ScriptRunner.get().note("按了" + HotKey.name(event.getKeyCode()) + "，急停");
+            ScriptRunner.get().note("按了" + HotKey.name(event.getKeyCode())
+                    + (event.getRepeatCount() >= HotKey.LONG_AT ? "（长按）" : "") + "，急停");
             Bus.emit("status", "stopped||vol");
             if (FloatService.get() != null) FloatService.get().refresh();
             return true;

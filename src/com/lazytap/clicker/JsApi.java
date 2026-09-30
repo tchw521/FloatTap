@@ -48,7 +48,7 @@ public final class JsApi {
         JSONObject sc = ScriptStore.findScript(id);
         if (sc == null) return "err:脚本不存在";
         if (!TapService.alive()) return "err:无障碍没开";
-        if (ScriptRunner.get().isRunning()) ScriptRunner.get().stop();
+        if (ScriptRunner.get().isBusy()) ScriptRunner.get().stop();   // 暂停中的也要先停
         return ScriptRunner.get().start(sc) ? "ok" : "err:启动失败";
     }
 
@@ -57,6 +57,14 @@ public final class JsApi {
         ScriptRunner.get().stop();
         JsEngine.get().stop();
         return "ok";
+    }
+
+    /** v2.5.0：暂停⇄恢复。返回切换后的状态（paused/running），前端刷新用 */
+    @JavascriptInterface
+    public String togglePause() {
+        ScriptRunner r = ScriptRunner.get();
+        r.togglePause();
+        return r.isPaused() ? "paused" : "running";
     }
 
     /** v2.2.0：日志面板的「清空」 */
@@ -197,6 +205,7 @@ public final class JsApi {
         JSONObject o = new JSONObject();
         try {
             o.put("running", ScriptRunner.get().isRunning());
+            o.put("paused", ScriptRunner.get().isPaused());   // v2.5.0：日志面板要分清暂停和空闲
             o.put("current", ScriptRunner.get().currentId());
             o.put("acc", TapService.enabled(c));
             o.put("overlay", overlayOk());
@@ -208,7 +217,7 @@ public final class JsApi {
             o.put("log", ScriptRunner.get().logsJson(80));   // 带时间和级别，日志面板要着色
             ScriptRunner r = ScriptRunner.get();
             o.put("prog", r.hasProgress() ? (r.progressCur() + "/" + r.progressTotal()) : "");
-            o.put("runName", r.isRunning() ? r.currentName() : "");
+            o.put("runName", r.isBusy() ? r.currentName() : "");   // 暂停时名字也要留着显示
             o.put("screen", screenInfo());
             o.put("vars", ScriptRunner.get().varSnapshot());   // 运行时变量值，调试用
             o.put("js", JsEngine.get().isBusy());              // JS 脚本在不在跑

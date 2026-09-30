@@ -20,11 +20,13 @@ public class QuickTile extends TileService {
     private void update() {
         Tile t = getQsTile();
         if (t == null) return;
-        boolean running = ScriptRunner.get().isRunning();
-        t.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
+        // v2.5.0：暂停也算在跑——磁贴要能看出来，点了要能停
+        boolean busy = ScriptRunner.get().isBusy();
+        boolean paused = ScriptRunner.get().isPaused();
+        t.setState(busy ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         String last = Prefs.getString("lastScript", "");
         JSONObject sc = last.isEmpty() ? null : ScriptStore.findScript(last);
-        t.setLabel(running ? "停止脚本" : (sc == null ? "懒人点击器" : "跑：" + sc.optString("name", "")));
+        t.setLabel(paused ? "已暂停·点继续" : (busy ? "停止脚本" : (sc == null ? "懒人点击器" : "跑：" + sc.optString("name", ""))));
         t.updateTile();
     }
 
@@ -33,7 +35,10 @@ public class QuickTile extends TileService {
         super.onClick();
         Prefs.init(this);
         ScriptStore.init(this);
-        if (ScriptRunner.get().isRunning()) {
+        if (ScriptRunner.get().isPaused()) {
+            // 暂停中的磁贴点一下：先恢复（误触代价小），再点一下才是停止
+            ScriptRunner.get().resume();
+        } else if (ScriptRunner.get().isBusy()) {
             ScriptRunner.get().stop();
         } else {
             String last = Prefs.getString("lastScript", "");

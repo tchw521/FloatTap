@@ -323,7 +323,8 @@
     h += '<span class="badge ' + (st.acc ? 'on' : 'off') + '">无障碍' + (st.acc ? '已开' : '未开') + '</span>';
     h += '<span class="badge ' + (st.overlay ? 'on' : 'off') + '">悬浮窗' + (st.overlay ? 'OK' : '未授权') + '</span>';
     if (st.recording) h += '<span class="badge off">录制中</span>';
-    if (st.running) h += '<span class="badge brand">运行中</span>';
+    if (st.paused) h += '<span class="badge paused">已暂停</span>';
+    else if (st.running) h += '<span class="badge brand">运行中</span>';
     $('#badges').innerHTML = h;
   }
 
@@ -336,19 +337,23 @@
   function heroCard() {
     var st = S.st || {};
     var running = !!st.running;
-    var cur = running ? findScript(st.current) : null;
+    var paused = !!st.paused;
+    var cur = (running || paused) ? findScript(st.current) : null;
     var h = '<div class="hero">'
-      + '<div class="hi">' + (running ? '手指已下班' : '今天也要少动手指') + '</div>'
-      + '<div class="ht">' + (running ? esc(cur ? cur.name : '运行中') : '一切就绪') + '</div>'
+      + '<div class="hi">' + (paused ? '中场休息' : running ? '手指已下班' : '今天也要少动手指') + '</div>'
+      + '<div class="ht">' + (paused ? '已暂停 · ' + esc(cur ? cur.name : '运行中')
+        : running ? esc(cur ? cur.name : '运行中') : '一切就绪') + '</div>'
       + '<div class="hs">'
       + dot(st.acc, '无障碍', 'acc')
       + dot(st.overlay, '悬浮窗', 'overlay')
       + (st.ball ? '<span class="dot ok"><b></b>悬浮球在岗</span>' : '')
+      + (paused ? '<span class="dot paused"><b></b>已暂停</span>' : '')
       + (running ? '<span class="dot run"><b></b>运行中</span>' : '')
       + (st.recording ? '<span class="dot run"><b></b>录制中</span>' : '')
       + '</div><div class="row">';
-    if (running) {
-      h += '<button class="btn warn grow" data-act="stop">■ 立刻刹车</button>';
+    if (running || paused) {
+      h += '<button class="btn grow" data-act="togglePause">' + (paused ? '▶ 继续跑' : '⏸ 暂停') + '</button>'
+        + '<button class="btn warn grow" data-act="stop">■ 立刻刹车</button>';
     } else if (S.scripts.length) {
       h += '<button class="btn grow" data-act="runLast">▶ 跑上次那个</button>';
     }
@@ -593,10 +598,11 @@
     var st = S.st || {};
     var h = '<div class="hero"><div class="hi">我的</div>'
       + '<div class="ht">' + (S.scripts.length
-        ? S.scripts.length + ' 个脚本待命' + (st.running ? ' · 正在跑' : '')
+        ? S.scripts.length + ' 个脚本待命' + (st.paused ? ' · 已暂停' : st.running ? ' · 正在跑' : '')
         : '一个脚本都还没有') + '</div>'
       + '<div class="hs">' + dot(st.acc, '无障碍', 'acc') + dot(st.overlay, '悬浮窗', 'overlay')
       + (st.ball ? '<span class="dot ok"><b></b>悬浮球在岗</span>' : '')
+      + (st.paused ? '<span class="dot paused"><b></b>已暂停</span>' : '')
       + (st.running ? '<span class="dot run"><b></b>运行中</span>' : '') + '</div></div>';
     h += hintBox() + '<div class="list">';
     for (var i = 0; i < MINE.length; i++) {
@@ -653,10 +659,16 @@
     }
 
     var h = '<div class="hero"><div class="hi">运行状态</div>'
-      + '<div class="ht">' + (st.running ? '🏃 正在跑 · ' + esc(st.runName || '')
-        + (st.prog ? ' · 第 ' + esc(st.prog) + ' 步' : '') : '💤 空闲中') + '</div>'
+      + '<div class="ht">' + (st.paused ? '⏸ 已暂停 · ' + esc(st.runName || '')
+        + (st.prog ? ' · 第 ' + esc(st.prog) + ' 步' : '')
+        : st.running ? '🏃 正在跑 · ' + esc(st.runName || '')
+        + (st.prog ? ' · 第 ' + esc(st.prog) + ' 步' : '')
+        : st.js ? '⚡ JS 脚本运行中'   // v2.5.0：以前 JS 在跑这里显示「空闲中」，瞎话
+        : '💤 空闲中') + '</div>'
       + '<div class="row">'
-      + (st.running ? '<button class="btn warn grow" data-act="stop">■ 停止</button>' : '')
+      + ((st.running || st.paused) ? '<button class="btn grow" data-act="togglePause">'
+        + (st.paused ? '▶ 恢复' : '⏸ 暂停') + '</button>' : '')
+      + ((st.running || st.paused) ? '<button class="btn warn grow" data-act="stop">■ 停止</button>' : '')
       + '<button class="btn ghost" data-act="logRefresh">刷新</button></div>'
       + '<div class="row" style="margin-top:8px">'
       + '<button class="btn sm ghost grow" data-act="logFilter">' + (min ? '✓ 只看提醒' : '全部') + '</button>'
@@ -795,6 +807,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.5.0</div>运行能<b>暂停</b>了：悬浮条多了「⏸ 暂停 / ▶ 恢复」按钮，暂停后跑到哪一步记住哪一步，恢复从断点继续、不丢进度；等待中的动作也能立刻暂停，暂停期间不吃等待时长。音量键升级三态：<b>短按</b>切换暂停/恢复、<b>长按</b>才是急停，没跑脚本时音量归系统管。磁贴、悬浮球、日志面板都能看出暂停态。JS 脚本模式暂不支持暂停（短按就是急停），下版再补。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.4.0</div>找节点补上三个新条件：<b>控件 id</b>（填 ok 或 com.xxx:id/ok 都行）、<b>正则</b>（按正则在文字里搜，不用加 ^$）、<b>内容描述</b>（desc）。多个条件全部满足才算命中；描述留空时沿用老样子（文字或描述任一命中），填了才改成「文字归文字、描述归描述」。顺手修掉两个老毛病：只填 id 不填文字以前会被当成「没填」直接判不成立；一屏里第 41 个往后永远取不到（「第几个」填大了就静默失效）。新增 52 条节点匹配单测。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.3.0</div>静默失效大扫除：「等待」动作真的会等了（以前写 5 秒只等 0.3 秒）；「找文字／找色／找图」的超时改成真轮询，不再被硬夹成 2 秒；表单补上「只看能点的按钮」「采样间隔」「超时」等一批引擎一直在读却没入口的开关；双击/长按/随机点新建时不再默认点 (0,0)；按键在低版本上按不动时会明说原因；JS 脚本开始认「开始前等几秒」和「循环几次」。新增字段对账测试，以后表单和引擎对不上会立刻变红。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.2.0</div>运行浮层（可拖拽、位置记住、跑起来自动冒出）、音量键急停、运行日志面板重做（按等级着色＋只看提醒＋复制／清空）。顺手修了进子页不刷新、以及编译失败照样打包出缺类 APK 这两个真问题。',
@@ -1791,6 +1804,7 @@
         break;
       }
       case 'stop': ok(call('stop')); setTimeout(refreshAll, 200); break;
+      case 'togglePause': ok(call('togglePause')); setTimeout(refreshAll, 200); break;   // v2.5.0 暂停⇄恢复
       case 'edit': openEditor(id); break;
       case 'back':
         // 在分组里就先退回脚本层，不在才退回脚本列表

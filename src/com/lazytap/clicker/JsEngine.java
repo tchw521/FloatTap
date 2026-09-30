@@ -73,7 +73,7 @@ public final class JsEngine {
         if ("js".equals(sc.optString("kind", ""))) {
             String code = sc.optString("code", "");
             if (code.trim().isEmpty()) return false;
-            if (ScriptRunner.get().isRunning()) ScriptRunner.get().stop();
+            if (ScriptRunner.get().isBusy()) ScriptRunner.get().stop();   // 暂停中的也要先停
             get().run(code, sc, sk);
             return true;
         }

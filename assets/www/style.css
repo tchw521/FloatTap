@@ -118,6 +118,9 @@ main{padding:8px 14px 6px}
 .dot.no b{background:var(--warn);box-shadow:0 0 0 3px rgba(239,68,68,.14)}
 .dot.run b{background:var(--brand);box-shadow:0 0 0 3px rgba(var(--glow),.18);animation:blink 1.4s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+/* v2.5.0：暂停态——橙色，和「出错」的红、「运行中」的蓝都区分开 */
+.badge.paused{color:#fff;background:linear-gradient(135deg,#d97706,var(--warn));border-color:transparent;box-shadow:0 2px 10px rgba(245,158,11,.30)}
+.dot.paused b{background:var(--warn);box-shadow:0 0 0 3px rgba(245,158,11,.20);animation:blink 1.4s infinite}
 
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .list .item:nth-child(1){animation-delay:.03s}
