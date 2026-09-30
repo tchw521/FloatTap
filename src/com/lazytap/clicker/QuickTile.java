@@ -39,7 +39,7 @@ public class QuickTile extends TileService {
             String last = Prefs.getString("lastScript", "");
             JSONObject sc = last.isEmpty() ? null : ScriptStore.findScript(last);
             if (sc != null && TapService.alive()) {
-                ScriptRunner.get().start(sc);
+                JsEngine.startScript(sc, null);
             } else {
                 startActivityAndCollapse(new android.content.Intent(this, MainActivity.class)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));

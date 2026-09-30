@@ -116,7 +116,7 @@ public final class Trigger {
         }
         ScriptRunner r = ScriptRunner.get();
         if (r.isRunning()) r.stop();
-        if (r.start(sc)) {
+        if (JsEngine.startScript(sc, null)) {
             Bus.emit("log", "⏰ " + why(kind) + "，开跑：" + sc.optString("name", "脚本"));
             if (FloatService.get() != null) FloatService.get().refresh();
         }

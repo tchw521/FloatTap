@@ -52,6 +52,24 @@
 | 比变量 ⚖️ | 左边、怎么比、右边、双向跳步 | 两个数比大小，成立 / 不成立各跳一步 |
 | 任何动作 | 重复 N 次、百分比坐标 | 精简步数、换机型不跑偏 |
 
+**JS 脚本模式（v1.7.0）**：不想一步步拼动作就直接写代码，`if` / `for` / 函数随便用，
+只有动作要加 `await`：
+
+```js
+await launch('com.example.app');
+await sleep(3000);
+for (var i = 0; i < 5; i++) {
+  var p = await findColor('#FF6B35', { sim: 92 });   // {x, y, sim} 或 null
+  if (!p) break;
+  await click(p.x, p.y);
+  await sleep(800 + rand(0, 400));
+}
+```
+
+共 25 个函数（操作 / 识别 / 数据三类），编辑器里点「📖 能调什么」随时查。
+JS 脚本用的还是**同一套动作实现**，所以变量、`{{}}` 插值、找色找图、计数器全都通用；
+悬浮球、快捷磁贴、自动化触发器都能跑 JS 脚本。
+
 **变量与表达式（v1.6.0）**：任何能填的字段都能写 `{{表达式}}`，执行到那一步才求值。
 表单里点「🧩 插入变量」直接塞变量，点「= 试算」当场看这句算式算出什么，不用跑一遍脚本才知道。
 内置变量有 `lastX` / `lastY` / `lastSim`（上一步找色找图的命中结果）、`loop`、`step`、
@@ -86,7 +104,7 @@ App 不在前台也生效，重启后自动重排；同一条规则 8 秒冷却�
 
 ## 三、怎么用（安装后 60 秒上手）
 
-1. 安装 APK（用 `adb install LazyTap-v1.6.0.apk` 或传到手机点开安装）。
+1. 安装 APK（用 `adb install LazyTap-v1.7.0.apk` 或传到手机点开安装）。
 2. 打开 App → 首页顶部两个徽章会提示缺什么：
    - **开启无障碍服务**：点「开启无障碍」跳系统设置 → 找到「懒人点击器」→ 打开。
    - **授权悬浮窗**：点「授权悬浮窗」→ 允许「显示在其他应用上层」。
@@ -99,7 +117,7 @@ App 不在前台也生效，重启后自动重排；同一条规则 8 秒冷却�
 
 ---
 
-## 四、技术架构（为什么不到 100 KB）
+## 四、技术架构（为什么不到 115 KB）
 
 | 层 | 技术 | 说明 |
 | --- | --- | --- |
@@ -108,13 +126,14 @@ App 不在前台也生效，重启后自动重排；同一条规则 8 秒冷却�
 | 脚本引擎 | 原生 Java（`ScriptRunner`） | 单后台线程串行执行，可中断，无反射 |
 | 图色识别 | 原生 Java（`Img`） | 找色 / 比色 / 找图，三层金字塔搜索，纯算法无模型 |
 | 表达式 / 变量 | 原生 Java（`Expr` + `Vars`） | 递归下降求值器 + `{{}}` 插值，无脚本引擎依赖 |
+| JS 脚本 | 系统 WebView 的 V8（`JsEngine`） | 独立隐藏 WebView，JS 只管调度、动作全走原生引擎 |
 | 截屏 | 原生 Java（`Capture` + `CaptureService`） | MediaProjection + ImageReader，Android 14 走前台服务 |
 | 悬浮球 | 原生 Java（`FloatService`） | WindowManager 自绘，前台服务常驻 |
 | 通信 | `addJavascriptInterface` 同步桥 + `evaluateJavascript` 回调 | 数据以 JSON 存内部文件，无数据库 |
 | 构建 | aapt2 → javac → d8 → zipalign → apksigner | 不用 Gradle，不拉 Maven，编译 5 秒 |
 
 **零第三方依赖**：无 androidx、无 React Native、无 Capacitor、无 OkHttp。
-所以 dex 只有 99 KB，整包 97 KB，常驻内存开销就是「一个前台服务 + 一个后台线程」。
+所以 dex 只有 112 KB，整包 109 KB，常驻内存开销就是「一个前台服务 + 一个后台线程」。
 顺带一提，对标的自动精灵是 44 MB —— 它带 QuickJS、ML Kit OCR 和端上模型，我们带的是算法。
 
 ### 源文件
@@ -130,6 +149,7 @@ src/com/lazytap/clicker/
   ScriptRunner.java           脚本执行引擎（含条件跳转 / 计数器 / 多指手势 / 变量插值）
   Expr.java                   表达式求值器：算术 / 比较 / 逻辑 / 函数
   Vars.java                   变量表 + {{}} 插值 + 内置变量
+  JsEngine.java               JS 脚本模式：隐藏 WebView + 异步动作桥
   ScriptStore.java            脚本 / 录制结果存取
   Img.java                    图色识别：颜色相似度 / 找色 / 比色 / 找图（三层金字塔）
   Capture.java / CaptureService.java   MediaProjection 截屏 + 前台服务
@@ -139,6 +159,7 @@ src/com/lazytap/clicker/
   FloatService.java           悬浮球 + 脚本面板 + 录制条 + 通知
   Prefs.java / Bus.java / QuickTile.java / BootReceiver.java
 assets/www/                   界面（index.html / app.js / style.css）
+                              JS 脚本模式（runner.js 脚本 API / jsrunner.html 空壳）
 ```
 
 ---
@@ -147,8 +168,8 @@ assets/www/                   界面（index.html / app.js / style.css）
 
 ```bash
 export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-tools/34.0.0
-./build.sh 1.6.0 8                        # 参数：版本名 版本码
-# 产出 out/LazyTap-v1.6.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
+./build.sh 1.7.0 9                        # 参数：版本名 版本码
+# 产出 out/LazyTap-v1.7.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
 ```
 
 > 无网络时也能构建：整条流水线只依赖本地 Android SDK 和 JDK，不下载任何依赖。
@@ -159,15 +180,22 @@ export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-
 
 **已验证**
 
-- 八版 APK 均通过 `apksigner verify`，`aapt2 dump badging` 显示包名、版本、权限、组件声明正确
+- 九版 APK 均通过 `apksigner verify`，`aapt2 dump badging` 显示包名、版本、权限、组件声明正确
 - 界面层用 headless Chrome + 模拟原生桥做了完整冒烟：脚本列表、编辑器、触发器增删改、
   新动作类型（如果 / 计数 / 多指 / **找色 / 比色 / 找图**）表单与摘要、**截图取色面板与模板图管理**、
-  六种配色、深色模式、平板双栏、横屏布局、**变量卡片 / 插入变量 / 试算**，**27 张截图、无控制台报错**
+  六种配色、深色模式、平板双栏、横屏布局、**变量卡片 / 插入变量 / 试算**、
+  **JS 脚本编辑器 / 示例 / API 文档 / JS 标签**，**34 张截图、无控制台报错**
 - **表达式求值器跑了独立基准**：45 项断言覆盖算术优先级、括号、取模、字符串拼接、比较与逻辑、
   六个函数、整数格式化、非法输入容错，**全通过**
 - **引擎语义跑了一遍仿真**：复刻 `step()` 主循环与跳转协议，14 条断言覆盖赋值 / 运算 / 引用变量、
   找色命中后 `lastX` 可被引用、`cnt.名字`、循环累加、随机数每次重算、算式写错保留原文、
   跳转步号语义（含越界步号不崩），**全通过**
+- **JS 脚本 API 跑了独立基准**：23 项断言覆盖坐标/百分比/等待三参、找色找图命中与落空、
+  比色布尔、找文字、变量、计数器累加与清零、随机数区间、屏幕尺寸、动作报错抛异常、
+  被叫停不抛异常，**全通过**
+- **JS 脚本跑了端到端仿真**：按 `JsEngine.inject()` 的真实包装字符串跑 `runner.js`，
+  验证「JS → 动作 → 结果回传」这条链：找色结果喂给点击、落空不点、循环里计数器累加、
+  脚本抛错被原生接住、模板图落空返回 null，**10 条断言全通过**
 - **图色算法跑了独立基准**（1080×1920 真机尺寸、合成噪点屏幕）：颜色相似度边界、颜色解析、
   比色命中/越界、找色命中/区域限定/不存在、找图定位/抗噪/不存在的模板/模板超界/区域限定，
   **19 组断言全通过**；性能实测小模板 16 ms、大模板 49 ms、密集重复图案 6 ms
@@ -181,6 +209,10 @@ export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-
 - 找图对**缩放不鲁棒**：模板图是在当前分辨率下截的，换机型或改系统字体/DPI 后需重新截模板
 - 变量只在脚本内有效，脚本之间不共享；想跨脚本传值目前只能靠把值写进动作字段里
 - 表达式是逐个字符解析的轻量实现，`{{}}` 里嵌套 `{{}}` 不支持（要嵌套就拆成两个动作）
+- **JS 脚本跑在 WebView 里，所以脚本执行期间界面这个进程必须活着**；脚本里别写不带 `await` 的
+  死循环，会把 WebView 主线程卡住（跟浏览器里一样）
+- JS 脚本模式会临时起一个隐藏 WebView，比纯动作脚本多占几十 MB 内存，跑完就释放；
+  纯动作脚本不受影响
 - 找色/找图是纯 CPU 逐像素比对，**全屏找图约 50 ms**；如果脚本里一秒找好几次会明显吃电，建议限定搜索区域
 - 部分机型截屏返回的 `Image` 带 padding（`rowStride`），代码里已按 `pixelStride` 处理，但机型差异大
 - 触点捕获依赖 `FLAG_WATCH_OUTSIDE_TOUCH` 的机型实现：绝大多数机型可用，个别 ROM 若不上报屏外触点，

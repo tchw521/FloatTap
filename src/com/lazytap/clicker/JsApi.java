@@ -55,6 +55,26 @@ public final class JsApi {
     @JavascriptInterface
     public String stop() {
         ScriptRunner.get().stop();
+        JsEngine.get().stop();
+        return "ok";
+    }
+
+    // ---------- JS 脚本模式（v1.7.0） ----------
+
+    /** 跑一个 JS 脚本（脚本对象里带 code 字段） */
+    @JavascriptInterface
+    public String runJs(String id) {
+        JSONObject sc = ScriptStore.findScript(id);
+        if (sc == null) return "err:脚本不存在";
+        if (!TapService.alive()) return "err:无障碍没开";
+        if (JsEngine.get().isBusy()) return "err:上一个 JS 脚本还在跑，先停掉";
+        return JsEngine.startScript(sc, (type, data) -> Bus.emit("js", type + "|" + data))
+                ? "ok" : "err:脚本是空的，先写两行";
+    }
+
+    @JavascriptInterface
+    public String stopJs() {
+        JsEngine.get().stop();
         return "ok";
     }
 
@@ -78,6 +98,7 @@ public final class JsApi {
             o.put("log", lg);
             o.put("screen", screenInfo());
             o.put("vars", ScriptRunner.get().varSnapshot());   // 运行时变量值，调试用
+            o.put("js", JsEngine.get().isBusy());              // JS 脚本在不在跑
         } catch (Exception ignored) {
         }
         return o.toString();

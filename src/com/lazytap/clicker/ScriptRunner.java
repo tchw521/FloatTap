@@ -513,10 +513,12 @@ public final class ScriptRunner {
         vars.put("lastX", String.valueOf(x));
         vars.put("lastY", String.valueOf(y));
         vars.put("lastSim", String.valueOf(sim));
+        lastHit = new int[]{x, y, sim};
     }
 
     /** 命中走 go，没命中走 els，语义与“如果”一致 */
-    private static int jump(JSONObject a, boolean hit) {
+    private int jump(JSONObject a, boolean hit) {
+        lastBool = hit;   // JS 脚本模式靠它拿到「判断成立没」
         int v = hit ? a.optInt("go", 0) : a.optInt("els", 0);
         if (v == -1) return JUMP_END;
         if (v == -2) return JUMP_LOOP;
@@ -617,6 +619,138 @@ public final class ScriptRunner {
     /** 拿当前变量值试算一段表达式，界面上即时预览 */
     public String tryEval(String e) {
         return vars.eval(e);
+    }
+
+    // ==================== JS 脚本模式（v1.7.0） ====================
+    // JS 只管调度，动作照样走 exec()，所以 JS 脚本和动作脚本共用同一批动作实现，
+    // {{}} 插值、变量、找色找图全都白拿。
+    // JS 跑在 WebView 主线程，动作跑在下面的 h 线程，两边用回调串起来：
+    //   JS 调 app.call(id, ...) 立刻返回 → 动作在 h 线程跑完 → 主线程回 __cb(id, 结果)
+
+    public interface OneDone {
+        void on(String resultJson);
+    }
+
+    private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+    private int[] lastHit;         // 最近一次图色命中的坐标
+    private boolean lastBool;      // 最近一次判断类动作的结果
+    private volatile boolean jsMode;
+
+    public boolean isJsMode() {
+        return jsMode && running;
+    }
+
+    /** JS 脚本开跑：把状态准备好，但不启动 step 循环——节奏交给 JS 自己控制 */
+    public boolean startJs(JSONObject sc) {
+        if (TapService.get() == null) {
+            log("无障碍服务没开，跑不动");
+            return false;
+        }
+        stop();
+        script = sc == null ? new JSONObject() : sc;
+        currentId = script.optString("id");
+        actions = null;                 // JS 模式没有动作表
+        jitter = script.optBoolean("jitter", false);
+        loopLeft = 0;
+        index = 0;
+        repeatLeft = 0;
+        counters.clear();
+        hits.clear();
+        lastHit = null;
+        vars.load(script.optJSONArray("vars"));
+        vars.loop = 1;
+        vars.cnt = counters;
+        vars.step = 0;
+        TapService ts = TapService.get();
+        vars.screenW = ts != null ? ts.screenW() : 0;
+        vars.screenH = ts != null ? ts.screenH() : 0;
+        ScriptStore.touchRun(script);
+        Prefs.put("lastScript", currentId);
+        jsMode = true;
+        running = true;
+        String name = script.optString("name", "未命名");
+        log("开跑（JS）：" + name);
+        status("running", name);
+        return true;
+    }
+
+    public void stopJs() {
+        jsMode = false;
+        running = false;
+        repeatLeft = 0;
+        if (h != null) h.removeCallbacksAndMessages(null);
+        if (listener != null && !currentId.isEmpty()) status("stopped", "");
+        currentId = "";
+    }
+
+    /**
+     * 执行单个动作（异步，结果回主线程）。结果 JSON 里可能有：
+     *   ok / x / y / sim —— 找色、找图、比色、判断类动作的命中结果
+     *   jump             —— 动作自带的跳转语义（-1 收工 / -2 重来一轮）
+     *   err              —— 出错或被中途叫停
+     * 动作跑完会按动作自带的等待（d）停一下再回调，JS 侧不用再额外 sleep。
+     */
+    public void runOne(JSONObject a, OneDone cb) {
+        if (h == null) {
+            if (cb != null) cb.on(errJson("引擎没起来"));
+            return;
+        }
+        h.post(() -> {
+            JSONObject r = new JSONObject();
+            try {
+                if (!running || !jsMode) {
+                    r.put("err", "已经停了");
+                } else {
+                    lastHit = null;
+                    lastBool = false;
+                    vars.step++;
+                    JSONObject b = vars.bind(a);
+                    int j = 0;
+                    try {
+                        j = exec(b);
+                    } catch (Throwable t) {
+                        r.put("err", String.valueOf(t.getMessage()));
+                    }
+                    r.put("jump", j);
+                    r.put("ok", lastBool ? 1 : 0);
+                    if (lastHit != null) {
+                        r.put("x", lastHit[0]);
+                        r.put("y", lastHit[1]);
+                        r.put("sim", lastHit[2]);
+                    }
+                    long wait = delayAfter(b);
+                    if (wait > 0 && running) Thread.sleep(Math.min(wait, 30000L));
+                }
+            } catch (Throwable t) {
+                try {
+                    r.put("err", String.valueOf(t.getMessage()));
+                } catch (Exception ignored) {
+                }
+            }
+            String s = r.toString();
+            if (cb != null) main.post(() -> cb.on(s));
+        });
+    }
+
+    private static String errJson(String m) {
+        JSONObject r = new JSONObject();
+        try {
+            r.put("err", m);
+        } catch (Exception ignored) {
+        }
+        return r.toString();
+    }
+
+    /** JS 侧 setVar/getVar 走这里 */
+    public void setVar(String k, String v) {
+        vars.put(k, v);
+    }
+
+    public String getVar(String k) {
+        String v = vars.get(k);
+        // 表里没有就当表达式求值，这样 JS 里 getVar('cnt.main') 也能读到计数器
+        if (v == null && k != null && !k.isEmpty()) v = vars.eval(k);
+        return v;
     }
 
     /** 计数器：加一 / 重置，达到次数就跳步或收工 */

@@ -338,3 +338,11 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
 
 /* 表单里的「插入变量 / 试算」小按钮：窄屏下不许被挤成竖排单字 */
 .row > .btn.sm{flex:0 0 auto;white-space:nowrap}
+
+/* JS 脚本代码框（v1.7.0） */
+.code{width:100%;box-sizing:border-box;min-height:220px;resize:vertical;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.55;
+  color:var(--txt);background:var(--glass2);border:1px solid var(--stroke);
+  border-radius:12px;padding:11px 12px;outline:none;white-space:pre;overflow-wrap:normal;
+  overflow-x:auto;tab-size:2;-webkit-text-size-adjust:100%}
+.code:focus{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 18%,transparent)}

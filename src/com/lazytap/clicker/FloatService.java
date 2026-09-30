@@ -431,7 +431,7 @@ public class FloatService extends Service {
             ScriptRunner.get().stop();
             toast("先停下，再开始");
         }
-        ScriptRunner.get().start(sc);
+        JsEngine.startScript(sc, null);
         refresh();
         closePanel();
     }

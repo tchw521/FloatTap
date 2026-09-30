@@ -303,9 +303,11 @@
         + (q ? '' : '<div class="grip" data-drag="' + S.scripts.indexOf(s) + '" data-list="scripts">⋮⋮</div>')
         + '<div class="ic g' + (s.tone || 1) + '" data-act="pickIcon" data-id="' + s.id + '">' + (s.icon || '📜') + '</div>'
         + '<div class="grow" data-act="edit" data-id="' + s.id + '">'
-        + '<div class="t">' + esc(s.name) + (s.loop ? '<span class="chip b">∞ 循环</span>' : '') + '</div>'
-        + '<div class="d">' + (s.desc ? esc(s.desc) + ' · ' : '') + acts.length + ' 步'
-        + (s.loop ? '' : ' · 跑 ' + (s.loopCount || 1) + ' 遍')
+        + '<div class="t">' + esc(s.name) + (s.kind === 'js' ? '<span class="chip">JS</span>' : '')
+        + (s.loop ? '<span class="chip b">∞ 循环</span>' : '') + '</div>'
+        + '<div class="d">' + (s.desc ? esc(s.desc) + ' · ' : '')
+        + (s.kind === 'js' ? 'JS 脚本' : acts.length + ' 步'
+          + (s.loop ? '' : ' · 跑 ' + (s.loopCount || 1) + ' 遍'))
         + (s.runs ? ' · 已跑 ' + s.runs + ' 次' : '') + '</div></div>'
         + '<div class="acts">'
         + (running
@@ -644,8 +646,23 @@
           + '</div><div class="n">' + t.n.split(' ').slice(1).join(' ') + '</div>'
           + '<div class="s">' + t.d + '</div></div>';
       }).join('')
+      + '<div class="tile" data-act="newJs"><div class="e">📜</div><div class="n">JS 脚本</div>'
+      + '<div class="s">直接写代码，循环判断随你写</div></div>'
       + '</div><div class="tiny" style="margin-top:10px">模板坐标用百分比，换机型也不跑偏，进去再微调即可。</div>'
       + '<button class="btn ghost wide" style="margin-top:12px" data-act="cancelAct">取消</button>');
+  }
+
+  function newJsScript() {
+    var s = {
+      id: uid(), name: '新 JS 脚本', desc: '', icon: '📜', tone: 1,
+      kind: 'js', actions: [], vars: [],
+      code: '// 每个动作前面都要写 await\nawait sleep(2000);\nawait clickP(50, 50);\n'
+    };
+    S.scripts.unshift(s);
+    saveScripts();
+    closeSheet();
+    openEditor(s.id);
+    toast('建好了，写代码吧');
   }
 
   function useTemplate(i) {
@@ -681,10 +698,102 @@
     if (c) s.loopCount = Math.max(1, parseInt(c.value || '1', 10) || 1);
     var w = document.getElementById('sdelay');
     if (w) s.startDelay = Math.max(0, parseInt(w.value || '0', 10) || 0);
+    var code = document.getElementById('scode');
+    if (code) s.code = code.value;      // JS 脚本的代码也在输入框里，别被重绘冲掉
     syncVars(s);
   }
 
+  // ---------- JS 脚本编辑器（v1.7.0） ----------
+
+  var JS_DEMO = [
+    '// 循环签到：找到橙色按钮就点，最多点 5 次',
+    "await launch('com.example.app');",
+    'await sleep(3000);',
+    '',
+    'for (var i = 0; i < 5; i++) {',
+    "  var p = await findColor('#FF6B35', { sim: 92 });",
+    "  if (!p) { log('第 ' + (i + 1) + ' 轮没找到按钮'); break; }",
+    "  log('点 (' + p.x + ',' + p.y + ') 像 ' + p.sim + '%');",
+    '  await click(p.x, p.y);',
+    '  await sleep(800 + rand(0, 400));',
+    '}',
+    "toast('收工');"
+  ].join('\n');
+
+  var JS_API_DOC = [
+    ['sleep(ms)', '等一会儿'],
+    ['click(x, y)', '点一下（像素坐标）'],
+    ['clickP(x%, y%)', '按屏幕百分比点，换机型不跑偏'],
+    ['doubleClick(x, y)', '双击'],
+    ['longClick(x, y, ms)', '长按'],
+    ['swipe(x1,y1,x2,y2,ms)', '滑动'],
+    ['randomClick(x, y, r)', '带抖动的点击'],
+    ['multi(手势, x, y, ms)', 'twoTap/twoLong/pinch/spread'],
+    ['key(名字)', 'back / home / recents / lock ...'],
+    ['input(文字)', '往当前输入框打字'],
+    ['launch(包名)', '打开某个 App'],
+    ['tapText(文字)', '找文字并点它'],
+    ['hasText(文字)', '屏幕上有没有这段字 → true/false'],
+    ['hasApp(包名)', '当前是不是这个 App → true/false'],
+    ['findColor(颜色)', '找颜色 → {x,y,sim} 或 null'],
+    ['findImage(名字)', '找模板图 → {x,y,sim} 或 null'],
+    ['cmpColor(x,y,颜色)', '某点颜色对不对 → true/false'],
+    ['setVar(名, 值)', '存变量'],
+    ['getVar(名)', '取变量'],
+    ['count(名)', '计数器加一，返回当前值'],
+    ['rand(a, b)', '随机数'],
+    ['screen()', '屏幕尺寸 {w, h}'],
+    ['log(...)', '写进运行日志'],
+    ['toast(话)', '屏幕下方弹一句'],
+    ['stop()', '主动结束脚本']
+  ];
+
+  function viewJsEditor(s) {
+    var busy = !!(S.st && S.st.js);
+    var h = '<div class="card"><div class="row">'
+      + '<button class="btn sm ghost" data-act="back">‹ 返回</button>'
+      + '<div class="ic g' + (s.tone || 1) + '" data-act="pickIcon" data-id="' + s.id
+      + '" style="width:34px;height:34px;flex:0 0 34px;font-size:16px">' + (s.icon || '📜') + '</div>'
+      + '<div class="grow"><input id="sname" value="' + esc(s.name) + '" placeholder="脚本名"></div>'
+      + '<button class="btn sm ok" data-act="save">保存</button></div>'
+      + '<label class="f" style="margin-top:10px"><span>备注（给自己看的，可留空）</span>'
+      + '<input id="sdesc" value="' + esc(s.desc || '') + '" placeholder="比如：每天 9 点签到"></label>'
+      + '</div>';
+
+    h += '<div class="card"><div class="sec">跑一下</div><div class="row">'
+      + (busy
+        ? '<button class="btn warn grow" data-act="stopJs">■ 停止</button>'
+        : '<button class="btn ok grow" data-act="runJs" data-id="' + s.id + '">▶ 跑脚本</button>')
+      + '<button class="btn ghost" data-act="jsApi">📖 能调什么</button></div>'
+      + '<div class="tiny" style="margin-top:8px">'
+      + (busy ? '正在跑。脚本里的 <code>log()</code> 会写进「📋 日志」页。'
+        : '每个动作都要写 <code>await</code>，脚本跑在界面线程，别写不带 await 的死循环。')
+      + '</div></div>';
+
+    h += '<div class="card"><div class="sec">代码</div>'
+      + '<textarea id="scode" class="code" spellcheck="false" rows="14"'
+      + ' placeholder="// 在这里写 JS，比如：&#10;await click(540, 1200);">' + esc(s.code || '') + '</textarea>'
+      + '<div class="row" style="margin-top:8px">'
+      + '<button class="btn sm ghost grow" data-act="jsDemo">📄 放个例子</button>'
+      + '<button class="btn sm ghost grow" data-act="jsClear">🧹 清空</button></div>'
+      + '<div class="tiny" style="margin-top:6px">写完记得点右上角「保存」，代码存在脚本里，导出 JSON 一并带走。</div></div>';
+    return h;
+  }
+
+  function sheetJsApi() {
+    var h = '<h3>脚本里能调什么</h3><div class="card" style="box-shadow:none;padding:0">';
+    for (var i = 0; i < JS_API_DOC.length; i++) {
+      h += '<div class="kv"><code>' + esc(JS_API_DOC[i][0]) + '</code>'
+        + '<span class="tiny" style="flex:0 0 auto;margin-left:10px">' + esc(JS_API_DOC[i][1]) + '</span></div>';
+    }
+    h += '</div><div class="tiny" style="margin-top:10px">写出来的就是标准 JS，'
+      + 'if / for / 函数都能用；只是每个动作要加 <code>await</code>。</div>'
+      + '<button class="btn ghost wide" style="margin-top:12px" data-act="cancelAct">关闭</button>';
+    return h;
+  }
+
   function viewEditor(s) {
+    if (s.kind === 'js') return viewJsEditor(s);
     var acts = s.actions || [];
     var h = '<div class="card"><div class="row">'
       + '<button class="btn sm ghost" data-act="back">‹ 返回</button>'
@@ -1163,12 +1272,19 @@
         S.st.ball ? ok(call('hideBall')) : ok(call('showBall'));
         setTimeout(refreshAll, 400);
         break;
-      case 'run': ok(call('run', id)); setTimeout(refreshAll, 300); break;
-      case 'runLast':
-        var last = S.prefs.lastScript && findScript(S.prefs.lastScript);
-        ok(call('run', (last || S.scripts[0]).id));
+      case 'run': {
+        var rs = findScript(id);
+        ok(call(rs && rs.kind === 'js' ? 'runJs' : 'run', id));
         setTimeout(refreshAll, 300);
         break;
+      }
+      case 'runLast': {
+        var last = S.prefs.lastScript && findScript(S.prefs.lastScript);
+        var ls = last || S.scripts[0];
+        ok(call(ls && ls.kind === 'js' ? 'runJs' : 'run', ls.id));
+        setTimeout(refreshAll, 300);
+        break;
+      }
       case 'stop': ok(call('stop')); setTimeout(refreshAll, 200); break;
       case 'edit': openEditor(id); break;
       case 'back': S.editId = null; render(); break;
@@ -1183,6 +1299,20 @@
         break;
       case 'addAct': sheet(sheetAddAct()); break;
       case 'pickTpl': useTemplate(+el.dataset.i); break;
+      case 'newJs': newJsScript(); break;
+      case 'runJs': ok(call('runJs', id)); setTimeout(refreshAll, 400); break;
+      case 'stopJs': ok(call('stopJs')); setTimeout(refreshAll, 300); break;
+      case 'jsApi': sheet(sheetJsApi()); break;
+      case 'jsDemo': {
+        var ta = document.getElementById('scode');
+        if (ta) { ta.value = JS_DEMO; toast('例子放好了，改成你自己的'); }
+        break;
+      }
+      case 'jsClear': {
+        var tc = document.getElementById('scode');
+        if (tc) { tc.value = ''; toast('清空了'); }
+        break;
+      }
       case 'pickIcon': sheet(sheetPickIcon(id)); break;
       case 'setIcon':
         var sc2 = findScript(id);
@@ -1497,6 +1627,12 @@
     else if (type === 'status' || type === 'resume') refreshAll();
     else if (type === 'scripts') refreshAll();
     else if (type === 'cap') { refreshAll(); toast(data === 'ok' ? '截屏已授权' : '没拿到截屏授权'); }
+    else if (type === 'js') {
+      refreshAll();
+      var p = String(data || '').split('|');
+      if (p[0] === 'err') toast('JS 出错：' + (p[1] || ''));
+      else if (p[0] === 'done') toast(p[1] ? 'JS 跑完了：' + p[1] : 'JS 跑完了');
+    }
   };
 
   // ---------- 启动 ----------

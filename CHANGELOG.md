@@ -3,7 +3,59 @@
 > 包名 `com.lazytap.clicker` ｜ 最低 Android 7.0（API 24）｜ 目标 Android 14（API 34）
 > 每个版本都是同一条构建流水线（aapt2 → javac → d8 → zipalign → apksigner）产出的签名包，可直接安装；低版本覆盖安装到高版本会被系统拒绝，需要卸载重装。
 
-## v1.6.0（2026-09-30）· 当前版本
+## v1.7.0（2026-09-30）· 当前版本
+
+**新增「JS 脚本模式」——不想一步步拼动作的，直接写代码。** 这是对标自动精灵脚本模式的那一步。
+
+**怎么写**
+
+```js
+await launch('com.example.app');
+await sleep(3000);
+
+for (var i = 0; i < 5; i++) {
+  var p = await findColor('#FF6B35', { sim: 92 });   // {x, y, sim} 或 null
+  if (!p) { log('没找到按钮'); break; }
+  await click(p.x, p.y);
+  await sleep(800 + rand(0, 400));
+}
+toast('收工');
+```
+
+`if` / `for` / 函数 / 闭包全是标准 JS，只有「动作」需要加 `await`。
+
+**为什么用 WebView 的 V8，而不是像自动精灵那样塞 QuickJS**
+
+- **装不下**：QuickJS 要 NDK 编一个几 MB 的 `.so`，与「零第三方、百 KB 级」直接冲突；V8 本来就在系统 WebView 里，白拿
+- **改得动**：脚本 API 全在 `assets/www/runner.js` 这一个文件里，加个新函数不用重编 dex
+- **够好用**：V8 比 QuickJS 语法新，且用户脚本里 `console.log` 直接接进运行日志页
+
+**架构：JS 只管调度，动作全走原生**
+
+JS 跑在 WebView 主线程，动作经 `app.call` 投递到引擎的后台线程，跑完回主线程唤醒 `await`。
+好处是 **JS 模式和动作模式共用同一批动作实现**，所以变量、`{{}}` 插值、找色找图、
+计数器全都白拿，加新动作也只需改一处。
+
+**能调什么（25 个函数，界面里点「📖 能调什么」随时看）**
+
+- 操作：`sleep` `click` `clickP`(百分比) `doubleClick` `longClick` `swipe` `randomClick` `multi` `key` `input` `launch`
+- 识别：`tapText` `hasText` `hasApp` `findColor` `findImage` `cmpColor`
+- 数据：`setVar` `getVar` `count` `rand` `now` `screen` `log` `toast` `stop`
+
+**配套**
+
+- 新建脚本时多一个「📜 JS 脚本」入口；脚本列表里 JS 脚本带 `JS` 标签
+- 编辑器里有代码框、「📄 放个例子」、「🧹 清空」，代码随脚本一起存、导出 JSON 一并带走
+- 悬浮球、快捷磁贴、自动化触发器**都能跑 JS 脚本**（统一从 `JsEngine.startScript` 进，不会漏）
+- 运行结果、报错、脚本里 `log()` 打的内容都进「📋 日志」页
+
+**本版修掉的问题**
+
+- 用户中途点「停止」时若立刻销毁 WebView，正在 `await` 的动作回调就发不出去，脚本会永远悬着。改成先让脚本顺着 `await` 链收尾，再释放页面
+
+体积 109 KB（dex 112 KB，网页 117 KB），**依然零第三方依赖**。
+
+## v1.6.0（2026-09-30）
 
 **新增「变量与表达式」——脚本终于能记住东西、能算数。** 上一版让脚本认识了画面，这一版让脚本有了记性：能存值、能算、能拿上一步的结果当下一步的坐标。
 
@@ -147,5 +199,6 @@
 | v1.4.1 | 79,120 B | 68,004 B | 79,000 B | 0 |
 | v1.5.0 | 91,408 B | 87,412 B | 90,000 B | 0 |
 | v1.6.0 | 99,600 B | 101,280 B | 100,353 B | 0 |
+| v1.7.0 | 112,024 B | 112,212 B | 116,916 B | 0 |
 
 没有引入任何第三方库（无 androidx、无 WebView 框架、无 RN/Capacitor），常驻只用一个前台服务 + 一个后台线程。
