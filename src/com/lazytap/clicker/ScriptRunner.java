@@ -43,6 +43,8 @@ public final class ScriptRunner {
     private volatile String currentId = "";
     /** v2.2.0：运行浮层与日志面板要显示「第几步 / 共几步」，这两个值给外部读 */
     private volatile int progCur, progTotal;
+    /** JS 模式用的循环设置：-1=一直跑，其余为轮数；jsDelayMs 是开跑前的等待 */
+    private volatile int jsLoops = 1, jsDelayMs;
     private volatile long runStartAt;
     private boolean jitter;
     private int repeatLeft;
@@ -140,6 +142,16 @@ public final class ScriptRunner {
 
     // ---------- v2.2.0：运行浮层要读的进度 ----------
 
+    /** JS 脚本该跑几轮（-1 = 一直跑） */
+    public int jsLoops() {
+        return jsLoops;
+    }
+
+    /** JS 脚本开跑前该等多少毫秒 */
+    public int jsDelayMs() {
+        return jsDelayMs;
+    }
+
     public boolean hasProgress() {
         return progTotal > 0;
     }
@@ -176,9 +188,9 @@ public final class ScriptRunner {
             logE("脚本是空的，加两步再来");
             return false;
         }
-        jitter = sc.optBoolean("jitter", false);
+        jitter = on(sc, "jitter", false);
         int loops = sc.optInt("loopCount", 1);
-        boolean forever = sc.optBoolean("loop", false);
+        boolean forever = on(sc, "loop", false);
         loopLeft = forever ? -1 : Math.max(1, loops);
         running = true;
         index = 0;
@@ -188,6 +200,7 @@ public final class ScriptRunner {
         vars.load(sc.optJSONArray("vars"));   // 变量每次开跑都从脚本里的初值开始
         vars.loop = 1;                        // {{loop}} 从第一轮开始数
         vars.cnt = counters;                  // 让 {{cnt.名字}} 能读到计数器的值
+        vars.hit = hits;                  // 让 {{hit.colorX}} {{hit.imageY}} 能分别引用找色/找图的落点
         TapService ts = TapService.get();
         vars.screenW = ts != null ? ts.screenW() : 0;
         vars.screenH = ts != null ? ts.screenH() : 0;
@@ -227,14 +240,11 @@ public final class ScriptRunner {
     }
 
     private float speed() {
-        float s = Prefs.getFloat("speed", 1f);
-        return s <= 0.05f ? 0.05f : s;
+        return Timing.speed(Prefs.getFloat("speed", 1f));
     }
 
     private long delayAfter(JSONObject a) {
-        long d = a.optLong("d", 300);
-        if (jitter && d > 0) d = Math.round(d * (0.75 + rnd.nextDouble() * 0.5)); // ±25%，更像人手
-        return (long) (d * speed());
+        return Timing.delayAfter(a, speed(), jitter, rnd);   // 计算挪到 Timing，好单测
     }
 
     private void step() {
@@ -382,10 +392,35 @@ public final class ScriptRunner {
     private int runSub(TapService svc, JSONObject sub) {
         if (sub == null) return 0;
         try {
-            return exec(vars.bind(sub));
+            JSONObject b = vars.bind(sub);
+            // 分组里没有 step() 那一步「动作间隔」，等待得自己来，否则 wait 在分组内等于没写
+            if ("wait".equals(b.optString("t", ""))) {
+                groupWait(b);
+                return 0;
+            }
+            return exec(b);
         } catch (Throwable t) {
             logE("分组里的动作出错：" + t.getMessage());
             return 0;
+        }
+    }
+
+    /**
+     * 分组内的等待：只能同步睡，因为子动作是串行循环跑的。
+     * 这里卡上限 5 秒——睡在无障碍回调线程上，太久会被系统当成服务无响应。
+     * 副作用：这一段时间内点「停止」要等它睡醒（循环每步都查 running，最多多等 5 秒）。
+     */
+    private void groupWait(JSONObject a) {
+        if (Timing.groupClamped(a, speed())) {
+            logW("分组里的等待最长 " + Timing.GROUP_WAIT_CAP + "ms，你要的被缩短了");
+        }
+        long ms = Timing.groupWait(a, speed());
+        if (ms <= 0) return;
+        log("在分组里等 " + ms + "ms");
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -532,13 +567,14 @@ public final class ScriptRunner {
                 return 0;
             }
             case "wait": {
-                log("发呆 " + a.optLong("ms", 1000) + "ms");
+                // 真正的时间由 step() 里的 delayAfter 撑着（见那里的 wait 特判）
+                log("等 " + a.optLong("ms", 1000) + "ms");
                 return 0;
             }
             case "key": {
                 String k = a.optString("k", "back");
-                svc.globalAction(k);
-                log("按了 " + k);
+                if (svc.globalAction(k)) log("按了 " + k);
+                else logW("按不了 " + k + "：" + TapService.keyHint(k));
                 return 0;
             }
             case "text": {
@@ -554,53 +590,30 @@ public final class ScriptRunner {
             }
             case "find": {
                 String text = a.optString("s", "");
-                boolean contains = a.optBoolean("contains", true);
-                boolean clickableOnly = a.optBoolean("clickable", false);
-                boolean doClick = a.optBoolean("click", true);
-                boolean pctIndex = false;
+                boolean contains = on(a, "contains", true);
+                boolean clickableOnly = on(a, "clickable", false);
+                boolean doClick = on(a, "click", true);
                 int nth = a.optInt("index", 1);
                 long timeout = a.optLong("timeout", 3000);
                 AccessibilityNodeInfo node = svc.findNode(text, contains, clickableOnly, nth);
+                if (node == null && timeout > 0) {
+                    // v2.3.0：以前这里是「等 min(timeout,2000) 后再试一次」——
+                    // 填 10 秒只等 2 秒，而且只试第二次就放弃了，典型的静默失效。
+                    // 现在改成在 timeout 内真轮询，找到就收手。
+                    logW("没找到「" + text + "」，最多再等 " + timeout + "ms");
+                    node = waitFind(svc, text, contains, clickableOnly, nth, timeout);
+                }
                 if (node != null) {
                     Rect r = new Rect();
                     node.getBoundsInScreen(r);
                     log("找到「" + text + "」@" + r.centerX() + "," + r.centerY());
                     if (doClick) svc.tap(r.centerX(), r.centerY(), 60);
                     node.recycle();
-                } else if (timeout > 0) {
-                    logW("没找到「" + text + "」，再等等");
-                    h.postDelayed(() -> {
-                        if (!running) return;
-                        try {
-                            TapService s2 = TapService.get();
-                            if (s2 == null) {
-                                running = false;
-                                logE("服务没了，不跑了");
-                                status("stopped", "fail");
-                                return;
-                            }
-                            AccessibilityNodeInfo n2 = s2.findNode(text, contains, clickableOnly, nth);
-                            if (n2 != null) {
-                                Rect r2 = new Rect();
-                                n2.getBoundsInScreen(r2);
-                                if (doClick) s2.tap(r2.centerX(), r2.centerY(), 60);
-                                n2.recycle();
-                                log("这回找到了「" + text + "」");
-                            } else if (script != null && script.optBoolean("stopOnFail", false)) {
-                                running = false;
-                                logE("还是没找到「" + text + "」，不跑了");
-                                status("stopped", "fail");
-                            } else {
-                                logW("还是没找到「" + text + "」，接着走");
-                            }
-                        } catch (Throwable t2) {
-                            logE("找文字出错：" + t2.getMessage());
-                        }
-                    }, Math.min(timeout, 2000));
                 } else {
                     logW("没找到「" + text + "」，跳过");
-                    if (script != null && script.optBoolean("stopOnFail", false)) {
+                    if (script != null && on(script, "stopOnFail", false)) {
                         running = false;
+                        logE("按剧本：找不到就收工");
                         status("stopped", "fail");
                         return JUMP_END;
                     }
@@ -611,6 +624,55 @@ public final class ScriptRunner {
                 logE("未知动作 " + t);
         }
         return 0;
+    }
+
+    /**
+     * 在 timeout 内反复找同一个节点，找到就返回（调用方负责点它和 recycle）。
+     * 每片都检查一次 running，所以「停止」最多延迟一片（250ms）生效——
+     * 比原来那种 postDelayed 一次就不管了的做法可控得多。
+     */
+    private AccessibilityNodeInfo waitFind(TapService svc, String text, boolean contains,
+                                           boolean clickableOnly, int nth, long timeout) {
+        return pollUntil(deadlineOf(timeout), "找文字", () -> svc.findNode(text, contains, clickableOnly, nth));
+    }
+
+    /** 把「最多等多久」换算成绝对截止时刻，顺手夹一下上限 */
+    private long deadlineOf(long timeout) {
+        if (Timing.clamped(timeout)) {
+            logW("最多等 60 秒就够了，你填的 " + timeout + "ms 被夹住了");
+        }
+        return Timing.deadline(timeout);
+    }
+
+    /** 一次探测；返回非 null 算命中 */
+    private interface Probe<T> {
+        T get() throws Throwable;
+    }
+
+    /**
+     * 每隔 FIND_SLICE 探一次，直到命中或超时。每片都查一次 running，
+     * 所以「停止」最多延迟一片生效；探测抛异常就收手，免得日志刷屏。
+     */
+    private <T> T pollUntil(long deadline, String what, Probe<T> p) {
+        while (running) {
+            long left = deadline - System.currentTimeMillis();
+            if (left <= 0) return null;
+            try {
+                Thread.sleep(Math.min(Timing.FIND_SLICE, left));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+            if (!running) return null;
+            try {
+                T r = p.get();
+                if (r != null) return r;
+            } catch (Throwable t) {
+                logE(what + "出错：" + t.getMessage());
+                return null;
+            }
+        }
+        return null;
     }
 
     private static String MULTI_NAME(String m) {
@@ -631,8 +693,8 @@ public final class ScriptRunner {
             log("当前应用 " + cur + (hit ? " ✓对上" : " ✗不是"));
         } else {
             String text = a.optString("s", "");
-            boolean contains = a.optBoolean("contains", true);
-            boolean clickableOnly = a.optBoolean("clickable", false);
+            boolean contains = on(a, "contains", true);
+            boolean clickableOnly = on(a, "clickable", false);
             int nth = a.optInt("index", 1);
             AccessibilityNodeInfo node = svc.findNode(text, contains, clickableOnly, nth);
             hit = node != null;
@@ -762,7 +824,7 @@ public final class ScriptRunner {
         if ("text".equals(k)) {
             String text = c.optString("s", "");
             if (text.isEmpty()) return false;
-            AccessibilityNodeInfo node = svc.findNode(text, c.optBoolean("contains", true),
+            AccessibilityNodeInfo node = svc.findNode(text, on(c, "contains", true),
                     false, Math.max(1, c.optInt("index", 1)));
             if (node == null) return false;
             node.recycle();
@@ -774,7 +836,7 @@ public final class ScriptRunner {
             int[] box = region(bmp, c);
             int[] hit = Img.findColor(bmp, Img.parseColor(c.optString("c", "#000000")),
                     c.optInt("sim", 95), box[0], box[1], box[2], box[3], Math.max(2, c.optInt("step", 2)));
-            if (hit != null) rememberHit(hit[0], hit[1], hit[2]);
+            if (hit != null) { rememberHit(hit[0], hit[1], hit[2]); noteHit("color", hit[0], hit[1]); }
             return hit != null;
         }
         if ("image".equals(k)) {
@@ -786,7 +848,7 @@ public final class ScriptRunner {
             if (t == null) return false;
             int[] box = region(bmp, c);
             int[] hit = Img.findImage(bmp, t, c.optInt("sim", 90), box[0], box[1], box[2], box[3]);
-            if (hit != null) rememberHit(hit[0], hit[1], hit[2]);
+            if (hit != null) { rememberHit(hit[0], hit[1], hit[2]); noteHit("image", hit[0], hit[1]); }
             return hit != null;
         }
         return false;
@@ -870,12 +932,23 @@ public final class ScriptRunner {
         int color = Img.parseColor(a.optString("c", "#000000"));
         int sim = a.optInt("sim", 95);
         int[] r = region(bmp, a);
-        int[] hit = Img.findColor(bmp, color, sim, r[0], r[1], r[2], r[3], a.optInt("step", 2));
+        int[] hit = Img.findColor(bmp, color, sim, r[0], r[1], r[2], r[3], Math.max(2, a.optInt("step", 2)));
+        // v2.3.0：以前表单里根本没 timeout 这个入口，找色是「截一帧、没中就算没中」，
+        // 于是「等红色按钮出现再点」这类活根本干不了。现在跟 find 一样真轮询。
+        if (hit == null && a.optLong("timeout", 0) > 0) {
+            logW("没找到颜色，最多再等 " + a.optLong("timeout", 0) + "ms");
+            hit = pollUntil(deadlineOf(a.optLong("timeout", 0)), "找色", () -> {
+                Bitmap b2 = Capture.shot(svc, 1500);
+                if (b2 == null) return null;
+                int[] r2 = region(b2, a);
+                return Img.findColor(b2, color, sim, r2[0], r2[1], r2[2], r2[3], Math.max(2, a.optInt("step", 2)));
+            });
+        }
         if (hit != null) {
             log("找到颜色 @(" + hit[0] + "," + hit[1] + ") 像 " + hit[2] + "%");
-            hits.put("color", hit[0] + "," + hit[1]);
+            noteHit("color", hit[0], hit[1]);
             rememberHit(hit[0], hit[1], hit[2]);
-            if (a.optBoolean("click", true)) svc.tap(hit[0], hit[1], 60);
+            if (on(a, "click", true)) svc.tap(hit[0], hit[1], 60);
             return jump(a, true);
         }
         logW("没找到颜色 " + a.optString("c", ""));
@@ -898,11 +971,20 @@ public final class ScriptRunner {
         int sim = a.optInt("sim", 90);
         int[] r = region(bmp, a);
         int[] hit = Img.findImage(bmp, tpl, sim, r[0], r[1], r[2], r[3]);
+        if (hit == null && a.optLong("timeout", 0) > 0) {
+            logW("没找到图，最多再等 " + a.optLong("timeout", 0) + "ms");
+            hit = pollUntil(deadlineOf(a.optLong("timeout", 0)), "找图", () -> {
+                Bitmap b2 = Capture.shot(svc, 1500);
+                if (b2 == null) return null;
+                int[] r2 = region(b2, a);
+                return Img.findImage(b2, tpl, sim, r2[0], r2[1], r2[2], r2[3]);
+            });
+        }
         if (hit != null) {
             log("找到图「" + name + "」@(" + hit[0] + "," + hit[1] + ") 像 " + hit[2] + "%");
-            hits.put("image", hit[0] + "," + hit[1]);
+            noteHit("image", hit[0], hit[1]);
             rememberHit(hit[0], hit[1], hit[2]);   // 记进 lastX/lastY，后面的动作能直接引用
-            if (a.optBoolean("click", true)) svc.tap(hit[0], hit[1], 60);
+            if (on(a, "click", true)) svc.tap(hit[0], hit[1], 60);
             return jump(a, true);
         }
         logW("没找到图「" + name + "」");
@@ -916,7 +998,26 @@ public final class ScriptRunner {
      * 只认一种就会把「开」读成「关」——pct（百分比坐标）和 rep（重复检查）都栽在这上面。
      */
     private static boolean on(JSONObject a, String k) {
-        return a != null && (a.optBoolean(k, false) || a.optInt(k, 0) == 1);
+        return on(a, k, false);
+    }
+
+    /**
+     * 带默认值的版本：默认值为 true 的开关（contains / click / resetAfter）也能用同一套兼容读法。
+     * 不然「界面存 1、引擎 optBoolean(key,true)」这种组合会一路读到 true——
+     * 你以为关了，其实一直开着，而且没有任何报错。
+     */
+    private static boolean on(JSONObject a, String k, boolean def) {
+        if (a == null) return def;
+        Object v = a.opt(k);
+        if (v == null) return def;
+        if (v instanceof Boolean) return (Boolean) v;
+        if (v instanceof Number) return ((Number) v).intValue() != 0;
+        if (v instanceof String) {
+            String s = ((String) v).trim().toLowerCase();
+            if ("true".equals(s) || "1".equals(s) || "on".equals(s) || "yes".equals(s)) return true;
+            if ("false".equals(s) || "0".equals(s) || "off".equals(s) || "no".equals(s) || s.isEmpty()) return false;
+        }
+        return def;
     }
 
     /** 坐标是不是按百分比算 */
@@ -950,6 +1051,15 @@ public final class ScriptRunner {
         vars.put("lastY", String.valueOf(y));
         vars.put("lastSim", String.valueOf(sim));
         lastHit = new int[]{x, y, sim};
+    }
+
+    /**
+     * 分别记下找色/找图各自的落点，给 {{hit.colorX}} {{hit.imageY}} 用。
+     * lastX/lastY 只留最后一次（不管哪种），一个脚本里先找图再找色就串味了。
+     */
+    private void noteHit(String kind, int x, int y) {
+        hits.put(kind + "X", String.valueOf(x));
+        hits.put(kind + "Y", String.valueOf(y));
     }
 
     /** 命中走 go，没命中走 els，语义与“如果”一致 */
@@ -1086,7 +1196,11 @@ public final class ScriptRunner {
         script = sc == null ? new JSONObject() : sc;
         currentId = script.optString("id");
         actions = null;                 // JS 模式没有动作表
-        jitter = script.optBoolean("jitter", false);
+        jitter = on(script, "jitter", false);
+        // v2.3.0：JS 脚本以前完全不认脚本设置里的「开始前等几秒」和「循环几次」，
+        // 界面上有这两个输入框，填了却没反应。现在读出来交给 JsEngine 包在外层。
+        jsDelayMs = Math.max(0, script.optInt("startDelay", 0)) * 1000;
+        jsLoops = on(script, "loop", false) ? -1 : Math.max(1, script.optInt("loopCount", 1));
         loopLeft = 0;
         index = 0;
         repeatLeft = 0;
@@ -1199,7 +1313,7 @@ public final class ScriptRunner {
         int times = a.optInt("times", 0);
         log("计数 " + k + " = " + cur);
         if (times > 0 && cur >= times) {
-            if (a.optBoolean("resetAfter", true)) counters.put(k, 0);
+            if (on(a, "resetAfter", true)) counters.put(k, 0);
             int go = a.optInt("go", 0);
             // 与全局一致：0=下一步，-1=收工，-2=重来一轮，>0=跳第 N 步
             if (go == -1) {

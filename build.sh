@@ -85,6 +85,26 @@ echo "==> 签名"
   --v2-signing-enabled true --v3-signing-enabled true \
   --out "$OUT/LazyTap-v$VER_NAME.apk" "$BUILD/aligned.apk"
 
-SIZE=$(du -h "$OUT/LazyTap-v$VER_NAME.apk" | cut -f1)
+# 校验包里的 assets 就是源目录里那份。
+# -A 指向的是 $ROOT/assets（源目录），本来就是最新的；这里钉一道，
+# 免得以后有人改成先拷贝到 build 再打包，拷漏了还看不出来（前端改了不生效最难查）。
+APK="$OUT/LazyTap-v$VER_NAME.apk"
+echo "==> 校验 assets"
+BAD=0
+while IFS= read -r f; do
+  rel="${f#$ROOT/}"
+  a=$(md5sum "$f" | cut -d' ' -f1)
+  b=$(unzip -p "$APK" "$rel" 2>/dev/null | md5sum | cut -d' ' -f1)
+  if [ "$a" != "$b" ]; then
+    echo "!! $rel 和源目录不一致（包里 $b / 源 $a）" >&2
+    BAD=1
+  fi
+done < <(find "$ROOT/assets" -type f)
+if [ "$BAD" != "0" ]; then
+  echo "!! assets 校验没过，已中止" >&2
+  exit 1
+fi
+
+SIZE=$(du -h "$APK" | cut -f1)
 echo "==> 完成: $OUT/LazyTap-v$VER_NAME.apk  体积 $SIZE"
 "$APKSIGNER" verify --print-certs "$OUT/LazyTap-v$VER_NAME.apk" | head -6

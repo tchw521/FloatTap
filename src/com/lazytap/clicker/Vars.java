@@ -22,6 +22,10 @@ public final class Vars {
             {"lastX", "最近一次找色/找图命中的横坐标"},
             {"lastY", "最近一次找色/找图命中的纵坐标"},
             {"lastSim", "最近一次命中的相似度（0~100）"},
+            {"hit.colorX", "最近一次「找色」命中的 X（跟找图分开记）"},
+            {"hit.colorY", "最近一次「找色」命中的 Y"},
+            {"hit.imageX", "最近一次「找图」命中的 X"},
+            {"hit.imageY", "最近一次「找图」命中的 Y"},
             {"loop", "当前第几轮（从 1 开始）"},
             {"step", "当前第几步（从 1 开始）"},
             {"screenW", "屏幕宽度（像素）"},
@@ -104,6 +108,11 @@ public final class Vars {
                 Integer c = cnt.get(name.substring(4));
                 return c == null ? "0" : String.valueOf(c);
             }
+            // 找色/找图各自最后一次命中的坐标（v2.3.0：以前引擎记了但没人能读到）
+            if (name.startsWith("hit.") && hit != null) {
+                String v = hit.get(name.substring(4));
+                return v == null ? "0" : v;
+            }
             String v = map.get(name);
             return v;   // 没定义就返回 null，Expr 会当 0
         }
@@ -116,6 +125,8 @@ public final class Vars {
     int screenH;
     /** 引擎的计数器表，让 {{cnt.名字}} 能用上「计数」动作的结果 */
     Map<String, Integer> cnt;
+    /** 引擎的图色命中表，让 {{hit.colorX}} {{hit.imageY}} 能分别引用找色/找图的落点 */
+    Map<String, String> hit;
 
     private static String DATE() {
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);

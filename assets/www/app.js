@@ -90,21 +90,27 @@
   // ---------- 动作定义 ----------
   var TYPES = {
     click: { n: '点击', e: '👆', c: 1, f: [['x', 'X 坐标'], ['y', 'Y 坐标'], ['d', '之后等待 ms']], def: { x: 50, y: 50, d: 300 } },
-    double: { n: '双击', e: '✌️', c: 1, f: [['x', 'X'], ['y', 'Y'], ['d', '之后等待 ms']], def: { d: 300 } },
-    long: { n: '长按', e: '👇', c: 1, f: [['x', 'X'], ['y', 'Y'], ['ms', '按住时长 ms'], ['d', '之后等待 ms']], def: { ms: 800, d: 300 } },
+    // v2.3.0：这三个以前 def 里没写 x/y，新建出来是 (0,0)——屏幕左上角，
+    // 用户以为「没反应」，其实是点在状态栏上了。补上和 click 一样的默认值
+    double: { n: '双击', e: '✌️', c: 1, f: [['x', 'X'], ['y', 'Y'], ['d', '之后等待 ms']], def: { x: 50, y: 50, d: 300 } },
+    long: { n: '长按', e: '👇', c: 1, f: [['x', 'X'], ['y', 'Y'], ['ms', '按住时长 ms'], ['d', '之后等待 ms']], def: { x: 50, y: 50, ms: 800, d: 300 } },
     swipe: { n: '滑动', e: '💫', c: 1, f: [['x1', '起点 X'], ['y1', '起点 Y'], ['x2', '终点 X'], ['y2', '终点 Y'], ['ms', '滑动时长 ms'], ['d', '之后等待 ms']], def: { x1: 50, y1: 70, x2: 50, y2: 30, ms: 400, d: 300 } },
-    random: { n: '随机点', e: '🎲', c: 1, f: [['x', '中心 X'], ['y', '中心 Y'], ['r', '随机半径 px'], ['d', '之后等待 ms']], def: { r: 12, d: 300 } },
-    wait: { n: '等待', e: '⏳', f: [['ms', '等待 ms']], def: { ms: 1000 } },
+    random: { n: '随机点', e: '🎲', c: 1, f: [['x', '中心 X'], ['y', '中心 Y'], ['r', '随机半径 px'], ['d', '之后等待 ms']], def: { x: 50, y: 50, r: 12, d: 300 } },
+    // d 写 0：等待时长以 ms 为准（引擎取 max(ms,d)），别让默认的 300 混进来
+    wait: { n: '等待', e: '⏳', f: [['ms', '等待 ms']], def: { ms: 1000, d: 0 } },
     key: { n: '按键', e: '🔘', f: [['k', '按键', 'key'], ['d', '之后等待 ms']], def: { k: 'back', d: 300 } },
     text: { n: '输入', e: '⌨️', f: [['s', '要输入的文字', 'text'], ['d', '之后等待 ms']], def: { s: '', d: 300 } },
     launch: { n: '开应用', e: '📱', f: [['p', '包名，如 com.tencent.mm', 'text'], ['d', '之后等待 ms']], def: { p: '', d: 1500 } },
-    find: { n: '找文字', e: '🔍', f: [['s', '屏幕上的文字', 'text'], ['click', '找到就点它', 'switch'], ['contains', '模糊匹配', 'switch'], ['timeout', '最多等 ms'], ['index', '第几个(1起)'], ['d', '之后等待 ms']], def: { click: true, contains: true, timeout: 3000, index: 1, d: 300 } },
-    if: { n: '如果', e: '🔀', f: [['m', '判断什么', 'sel:ifmode'], ['s', '屏幕上的文字', 'text'], ['p', '应用包名（判断 App 时用）', 'text'], ['contains', '模糊匹配', 'switch'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { m: 'text', s: '', p: '', contains: true, go: 0, els: 0, d: 100 } },
+    // v2.3.0：clickable 引擎一直在读（只找能点的控件），但表单里没入口，等于躺了三个版本
+    find: { n: '找文字', e: '🔍', f: [['s', '屏幕上的文字', 'text'], ['click', '找到就点它', 'switch'], ['contains', '模糊匹配', 'switch'], ['clickable', '只看能点的按钮', 'switch'], ['timeout', '最多等 ms'], ['index', '第几个(1起)'], ['d', '之后等待 ms']], def: { click: true, contains: true, clickable: false, timeout: 3000, index: 1, d: 300 } },
+    if: { n: '如果', e: '🔀', f: [['m', '判断什么', 'sel:ifmode'], ['s', '屏幕上的文字', 'text'], ['p', '应用包名（判断 App 时用）', 'text'], ['contains', '模糊匹配', 'switch'], ['clickable', '只看能点的按钮', 'switch'], ['index', '第几个(1起)'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { m: 'text', s: '', p: '', contains: true, clickable: false, index: 1, go: 0, els: 0, d: 100 } },
     count: { n: '计数', e: '🔢', f: [['k', '计数器名字', 'text'], ['mode', '动作', 'sel:cntmode'], ['v', '每次加多少'], ['times', '涨到几次就跳（0=不管）'], ['go', '跳到第几步'], ['resetAfter', '跳完就清零', 'switch'], ['d', '之后等待 ms']], def: { k: 'main', mode: 'add', v: 1, times: 0, go: 0, resetAfter: true, d: 100 } },
     multi: { n: '多指', e: '🖐', c: 1, f: [['m', '手势', 'sel:multi'], ['x', '中心 X'], ['y', '中心 Y'], ['r', '两指间距半径'], ['ms', '动作时长 ms'], ['d', '之后等待 ms']], def: { m: 'twoTap', x: 50, y: 50, r: 80, ms: 400, d: 400 } },
-    findColor: { n: '找色', e: '🎨', c: 1, f: [['c', '目标颜色', 'color'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { c: '#FF6B35', sim: 95, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300, pct: 1 }, pct: ['rx', 'ry', 'rw', 'rh'] },
+    // step：每隔几个像素采一次样，越大越快越糙（最小 2）。以前表单没这个入口，
+    // 全屏找色只能按默认的 2 一步步扫，在大屏上慢得像卡住
+    findColor: { n: '找色', e: '🎨', c: 1, f: [['c', '目标颜色', 'color'], ['sim', '相似度 %'], ['step', '采样间隔(越大越快,≥2)'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['timeout', '没找到就再等 ms（0=不等）'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { c: '#FF6B35', sim: 95, step: 2, timeout: 0, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300, pct: 1 }, pct: ['rx', 'ry', 'rw', 'rh'] },
     cmpColor: { n: '比色', e: '🌈', f: [['x', 'X 坐标'], ['y', 'Y 坐标'], ['c', '期望颜色', 'color'], ['sim', '相似度 %'], ['go', '颜色对 → 跳到第几步'], ['els', '不对 → 跳到第几步'], ['d', '之后等待 ms']], def: { x: 50, y: 50, c: '#FFFFFF', sim: 95, go: 0, els: 0, d: 200 } },
-    findImage: { n: '找图', e: '🖼', c: 1, f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300, pct: 1 }, pct: ['rx', 'ry', 'rw', 'rh'] },
+    findImage: { n: '找图', e: '🖼', c: 1, f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['timeout', '没找到就再等 ms（0=不等）'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { tpl: '', sim: 90, timeout: 0, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300, pct: 1 }, pct: ['rx', 'ry', 'rw', 'rh'] },
     set: { n: '赋值', e: '📝', f: [['k', '变量名', 'text'], ['v', '值（可写 {{变量}}）', 'var'], ['d', '之后等待 ms']], def: { k: 'n', v: '', d: 100 } },
     math: { n: '运算', e: '🧮', f: [['k', '存到哪个变量', 'text'], ['e', '算式（不用加 {{}}）', 'expr'], ['d', '之后等待 ms']], def: { k: 'n', e: 'n+1', d: 100 } },
     cmpVar: { n: '比变量', e: '⚖️', f: [['l', '左边', 'var'], ['op', '怎么比', 'sel:cmpop'], ['r', '右边', 'var'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { l: 'n', op: '>=', r: '3', go: 0, els: 0, d: 100 } },
@@ -119,7 +125,7 @@
     pkg: { n: '当前是某 App', e: '📱', f: [['v', '包名，如 com.tencent.mm', 'text']], def: { v: '' }, sum: function (c) { return '在 ' + (c.v || '?'); } },
     // pct 默认开：区域字段 0/0/100/100 本来就是百分比（全屏），
     // 关掉的话会被当成 100×100 像素，找色只在左上角一小块里搜，看着像「永远找不到」
-    color: { n: '屏幕上有颜色', e: '🎨', f: [['c', '颜色', 'color'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { c: '#FF6B35', sim: 95, rx: 0, ry: 0, rw: 100, rh: 100, pct: 1 }, pct: 1, sum: function (c) { return '有 ' + (c.c || ''); } },
+    color: { n: '屏幕上有颜色', e: '🎨', f: [['c', '颜色', 'color'], ['sim', '相似度 %'], ['step', '采样间隔(越大越快,≥2)'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { c: '#FF6B35', sim: 95, step: 2, rx: 0, ry: 0, rw: 100, rh: 100, pct: 1 }, pct: 1, sum: function (c) { return '有 ' + (c.c || ''); } },
     image: { n: '屏幕上有图', e: '🖼', f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100, pct: 1 }, pct: 1, sum: function (c) { return '有图「' + (c.tpl || '未选') + '」'; } },
     time: { n: '到了某个时间', e: '⏰', f: [['v', '时间点，如 09:00', 'text']], def: { v: '09:00' }, sum: function (c) { return '过了 ' + (c.v || ''); } },
     rand: { n: '随机概率', e: '🎲', f: [['v', '成立的概率 %']], def: { v: 50 }, sum: function (c) { return '随机 ' + (c.v || 0) + '%'; } },
@@ -775,7 +781,18 @@
       + '算式写错了不会崩，会原样留在那儿，日志里也看得出来。</div></div>';
   }
 
+  // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
+  // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.3.0</div>静默失效大扫除：「等待」动作真的会等了（以前写 5 秒只等 0.3 秒）；「找文字／找色／找图」的超时改成真轮询，不再被硬夹成 2 秒；表单补上「只看能点的按钮」「采样间隔」「超时」等一批引擎一直在读却没入口的开关；双击/长按/随机点新建时不再默认点 (0,0)；按键在低版本上按不动时会明说原因；JS 脚本开始认「开始前等几秒」和「循环几次」。新增字段对账测试，以后表单和引擎对不上会立刻变红。',
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.2.0</div>运行浮层（可拖拽、位置记住、跑起来自动冒出）、音量键急停、运行日志面板重做（按等级着色＋只看提醒＋复制／清空）。顺手修了进子页不刷新、以及编译失败照样打包出缺类 APK 这两个真问题。',
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.1.0</div>动作分组 + 四种跑法（顺序／同时／打乱／随机挑一个），手势类分组会合成一次多指手势派出去。',
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.0.1</div>体检版：把界面存什么、引擎读什么做了一次全字段交叉对账，修掉 7 个 bug，构建搬到 GitHub Actions 云端。',
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.0.0</div>界面与交互范式全面对齐自动精灵：底部四大页签、脚本卡片、多条件判断（全部满足／满足一个／凑够 N 个）、条件可重复检查到成功为止。',
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v1.8.0</div>脚本市场与分享码：一条码带走整个脚本，扫码导入，内置模板库。',
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v1.7.0</div>JS 脚本模式：用 await 写脚本，跟动作脚本共用同一批动作实现。',
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v1.6.0</div>变量与表达式：任何字段都能写 {{变量}}，里面还能算。',
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v1.5.0</div>图色识别：找色、比色、找图（模板匹配），命中坐标能接着用。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v1.4.0</div>新增自动化触发器（每天定时／每隔 N 分钟／收到指定通知／插上电源／解锁屏幕）、「如果…就跳步」条件判断、计数器、多指手势（齐点·按住·捏合·张开）；动作与脚本支持按住 ⋮⋮ 拖拽排序，新增六种配色、转场动画与横屏平板适配；修复「脚本只会重复第一个动作」的重大缺陷。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v1.3.0</div>界面换成通透玻璃质感（毛玻璃卡片＋光晕背景＋浮动导航），渲染走帧节流，脚本支持图标、备注与搜索，新增「开始前先等几秒」，滑动条不再被打断。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v1.2.0</div>模板脚本库（连点器／刷视频／签到／跳广告／挂机）、运行次数统计、找字失败即停、磁贴一键跑。',

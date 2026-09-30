@@ -249,6 +249,11 @@
     return true;
   }
 
+  /** 脚本还在跑吗（自己写循环时用它当刹车条件） */
+  function running() {
+    return !!sys({ m: 'running' }).v;
+  }
+
   // console.log 也接进日志页，免得脚本里打的东西看不到。
   // 只在浏览器里接管：Node 下跑测试时不能把 console 吞掉。
   if (typeof window !== 'undefined' && G.console) {
@@ -263,7 +268,8 @@
     tapText: tapText, hasText: hasText, hasApp: hasApp,
     findColor: findColor, findImage: findImage, cmpColor: cmpColor,
     setVar: setVar, getVar: getVar, count: count,
-    rand: rand, now: now, screen: screen, log: log, toast: toast, stop: stop
+    rand: rand, now: now, screen: screen, log: log, toast: toast, stop: stop,
+    running: running
   };
   for (var k in api) G[k] = api[k];
   G.__api = api;

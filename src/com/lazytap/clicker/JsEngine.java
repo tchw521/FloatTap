@@ -138,10 +138,24 @@ public final class JsEngine {
             fail("无障碍服务没开，跑不动");
             return;
         }
-        // 用户脚本包成 async IIFE，顶层才能直接写 await
-        String js = "(async function(){\n" + code
-                + "\n})().then(function(v){app.done(v==null?'':String(v));})"
-                + ".catch(function(e){app.fail((e&&e.message)?e.message:String(e));});";
+        // 用户脚本包成 async IIFE，顶层才能直接写 await。
+        // v2.3.0：外面再套一层循环和开跑前的等待，把脚本设置里的
+        // 「开始前先等几秒」「循环几次」真正用起来（以前这两项对 JS 脚本完全无效）。
+        int loops = ScriptRunner.get().jsLoops();
+        int delay = ScriptRunner.get().jsDelayMs();
+        StringBuilder w = new StringBuilder("(async function(){\n");
+        w.append("var __i=0, __n=").append(loops).append(";\n");
+        if (delay > 0) w.append("await sleep(").append(delay).append(");\n");
+        w.append("while (true) {\n");
+        w.append("if (__i > 0) log('JS 第 ' + (__i + 1) + ' 轮');\n");
+        w.append("__i++;\n");
+        w.append(code).append("\n");
+        // 先问「还跑着吗」再决定要不要来下一轮：用户按了停止/音量键就能真停下
+        w.append("if (!running()) break;\n");
+        w.append("if (__n > 0 && __i >= __n) break;\n");
+        w.append("}\n");
+        String js = w.append("})().then(function(v){app.done(v==null?'':String(v));})"
+                + ".catch(function(e){app.fail((e&&e.message)?e.message:String(e));});").toString();
         try {
             web.evaluateJavascript(js, null);
         } catch (Throwable t) {
@@ -291,6 +305,10 @@ public final class JsEngine {
                     }
                     case "now":
                         r.put("v", System.currentTimeMillis());
+                        break;
+                    // v2.3.0：JS 脚本要能问「还在跑吗」，不然外层循环停不下来
+                    case "running":
+                        r.put("v", ScriptRunner.get().isRunning() ? 1 : 0);
                         break;
                     default:
                         r.put("err", "不认识的方法 " + m);

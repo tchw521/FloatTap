@@ -304,7 +304,7 @@ public class FloatService extends Service {
                 JSONObject a = new JSONObject();
                 a.put("t", "wait");
                 a.put("ms", 2000);
-                a.put("d", 300);
+                a.put("d", 0);      // 等待时长以 ms 为准，引擎取 max(ms, d)；写 300 会让「+2s」变成 2.3s
                 a.put("note", "手动等待");
                 ScriptStore.addRecordAction(a);
                 Bus.emit("recordAction", a.toString());
@@ -715,8 +715,12 @@ public class FloatService extends Service {
         for (int i = 0; i < arr.length(); i++) {
             JSONObject o = arr.optJSONObject(i);
             if (o == null) continue;
-            names.add((i + 1) + ". " + o.optString("name", "未命名")
-                    + "  (" + o.optJSONArray("actions").length() + "步)");
+            // v2.3.0：JS 脚本没有 actions 字段，以前直接 .length() 会 NPE——
+            // 悬浮球一弹「选个脚本」就崩，而且只在有 JS 脚本时才犯，很难复现
+            JSONArray acts = o.optJSONArray("actions");
+            String tail = "js".equals(o.optString("kind", "")) ? "JS 脚本"
+                    : (acts == null ? 0 : acts.length()) + " 步";
+            names.add((i + 1) + ". " + o.optString("name", "未命名") + "  (" + tail + ")");
             ids.add(o.optString("id"));
         }
         if (names.isEmpty()) names.add("还没有脚本，进 App 加一个");

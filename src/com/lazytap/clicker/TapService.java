@@ -270,35 +270,42 @@ public class TapService extends AccessibilityService {
         }
     }
 
-    public void globalAction(String k) {
+    /**
+     * @return 是否真的做成了。v2.3.0 以前返回 void，调用方一律 log("按了 xxx")，
+     *         于是「锁屏」在 Android 9 以下（GLOBAL_ACTION_LOCK_SCREEN 是 API 28 才有的）
+     *         什么都没干，日志却写着「按了 lock」——按日志排查的人会怀疑人生。
+     */
+    public boolean globalAction(String k) {
         switch (k) {
             case "back":
-                performGlobalAction(GLOBAL_ACTION_BACK);
-                break;
+                return performGlobalAction(GLOBAL_ACTION_BACK);
             case "home":
-                performGlobalAction(GLOBAL_ACTION_HOME);
-                break;
+                return performGlobalAction(GLOBAL_ACTION_HOME);
             case "recents":
-                performGlobalAction(GLOBAL_ACTION_RECENTS);
-                break;
+                return performGlobalAction(GLOBAL_ACTION_RECENTS);
             case "notif":
-                performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
-                break;
+                return performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
             case "quick":
-                performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
-                break;
+                return performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
             case "lock":
-                if (Build.VERSION.SDK_INT >= 28) performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
-                break;
+                if (Build.VERSION.SDK_INT < 28) return false;
+                return performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
             case "power":
-                performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
-                break;
+                return performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
             case "split":
-                if (Build.VERSION.SDK_INT >= 24) performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
-                break;
+                if (Build.VERSION.SDK_INT < 24) return false;
+                return performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
             default:
-                performGlobalAction(GLOBAL_ACTION_BACK);
+                return performGlobalAction(GLOBAL_ACTION_BACK);
         }
+    }
+
+    /** 按键没生效时给人话原因，别只甩一句「失败」 */
+    public static String keyHint(String k) {
+        if ("lock".equals(k)) return "锁屏要 Android 9 以上";
+        if ("split".equals(k)) return "分屏要 Android 7 以上";
+        if ("power".equals(k)) return "电源菜单被系统拦了";
+        return "系统没接这个键";
     }
 
     public boolean inputText(String s) {

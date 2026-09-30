@@ -21,7 +21,9 @@ const MOCK_SRC = `() => {
     { id: 'a4', name: '跳广告', icon: '⏭', tone: 5, loop: true,
       actions: [
         { t: 'findColor', c: '#ff3b30', sim: 92, click: true, timeout: 3000, d: 400 },
-        { t: 'cmpColor', x: 540, y: 1180, c: '#12c46a', sim: 90, hit: 0, miss: -1, d: 100 },
+        // 注意：比色的跳转字段是 go/els，不是 hit/miss —— v2.3.0 以前这里写错了，
+        // 冒烟渲染看着正常，真机上跳转其实是失效的
+        { t: 'cmpColor', x: 540, y: 1180, c: '#12c46a', sim: 90, go: 0, els: -1, d: 100 },
         { t: 'findImage', tpl: '跳过广告', sim: 88, click: true, timeout: 3000, d: 400 }
       ] },
     { id: 'a5', name: '循环签到', desc: 'JS 写的', icon: '📜', tone: 6, kind: 'js',
