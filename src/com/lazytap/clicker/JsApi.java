@@ -77,9 +77,34 @@ public final class JsApi {
             for (int i = start; i < ls.size(); i++) lg.put(ls.get(i));
             o.put("log", lg);
             o.put("screen", screenInfo());
+            o.put("vars", ScriptRunner.get().varSnapshot());   // 运行时变量值，调试用
         } catch (Exception ignored) {
         }
         return o.toString();
+    }
+
+    /** 内置变量清单，界面「插入变量」下拉用 */
+    @JavascriptInterface
+    public String builtinVars() {
+        JSONArray a = new JSONArray();
+        String[][] b = Vars.BUILTIN;
+        for (int i = 0; i < b.length; i++) {
+            JSONObject o = new JSONObject();
+            try {
+                o.put("k", b[i][0]);
+                o.put("d", b[i][1]);
+            } catch (Exception ignored) {
+            }
+            a.put(o);
+        }
+        return a.toString();
+    }
+
+    /** 试算一段表达式（不含 {{}}），用当前变量值算，界面上即时看结果 */
+    @JavascriptInterface
+    public String tryExpr(String e) {
+        String r = ScriptRunner.get().tryEval(e);
+        return r == null ? "err:读不懂" : r;
     }
 
     private JSONObject screenInfo() {

@@ -69,20 +69,25 @@
     wait: { n: '等待', e: '⏳', f: [['ms', '等待 ms']], def: { ms: 1000 } },
     key: { n: '按键', e: '🔘', f: [['k', '按键', 'key'], ['d', '之后等待 ms']], def: { k: 'back', d: 300 } },
     text: { n: '输入', e: '⌨️', f: [['s', '要输入的文字', 'text'], ['d', '之后等待 ms']], def: { s: '', d: 300 } },
-    launch: { n: '开应用', e: '📱', f: [['p', '包名，如 com.tencent.mm'], ['d', '之后等待 ms']], def: { p: '', d: 1500 } },
-    find: { n: '找文字', e: '🔍', f: [['s', '屏幕上的文字'], ['click', '找到就点它', 'switch'], ['contains', '模糊匹配', 'switch'], ['timeout', '最多等 ms'], ['index', '第几个(1起)'], ['d', '之后等待 ms']], def: { click: true, contains: true, timeout: 3000, index: 1, d: 300 } },
-    if: { n: '如果', e: '🔀', f: [['m', '判断什么', 'sel:ifmode'], ['s', '屏幕上的文字'], ['p', '应用包名（判断 App 时用）'], ['contains', '模糊匹配', 'switch'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { m: 'text', s: '', p: '', contains: true, go: 0, els: 0, d: 100 } },
-    count: { n: '计数', e: '🔢', f: [['k', '计数器名字'], ['mode', '动作', 'sel:cntmode'], ['v', '每次加多少'], ['times', '涨到几次就跳（0=不管）'], ['go', '跳到第几步'], ['resetAfter', '跳完就清零', 'switch'], ['d', '之后等待 ms']], def: { k: 'main', mode: 'add', v: 1, times: 0, go: 0, resetAfter: true, d: 100 } },
+    launch: { n: '开应用', e: '📱', f: [['p', '包名，如 com.tencent.mm', 'text'], ['d', '之后等待 ms']], def: { p: '', d: 1500 } },
+    find: { n: '找文字', e: '🔍', f: [['s', '屏幕上的文字', 'text'], ['click', '找到就点它', 'switch'], ['contains', '模糊匹配', 'switch'], ['timeout', '最多等 ms'], ['index', '第几个(1起)'], ['d', '之后等待 ms']], def: { click: true, contains: true, timeout: 3000, index: 1, d: 300 } },
+    if: { n: '如果', e: '🔀', f: [['m', '判断什么', 'sel:ifmode'], ['s', '屏幕上的文字', 'text'], ['p', '应用包名（判断 App 时用）', 'text'], ['contains', '模糊匹配', 'switch'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { m: 'text', s: '', p: '', contains: true, go: 0, els: 0, d: 100 } },
+    count: { n: '计数', e: '🔢', f: [['k', '计数器名字', 'text'], ['mode', '动作', 'sel:cntmode'], ['v', '每次加多少'], ['times', '涨到几次就跳（0=不管）'], ['go', '跳到第几步'], ['resetAfter', '跳完就清零', 'switch'], ['d', '之后等待 ms']], def: { k: 'main', mode: 'add', v: 1, times: 0, go: 0, resetAfter: true, d: 100 } },
     multi: { n: '多指', e: '🖐', c: 1, f: [['m', '手势', 'sel:multi'], ['x', '中心 X'], ['y', '中心 Y'], ['r', '两指间距半径'], ['ms', '动作时长 ms'], ['d', '之后等待 ms']], def: { m: 'twoTap', x: 50, y: 50, r: 80, ms: 400, d: 400 } },
     findColor: { n: '找色', e: '🎨', c: 1, f: [['c', '目标颜色', 'color'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { c: '#FF6B35', sim: 95, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300 }, pct: ['rx', 'ry', 'rw', 'rh'] },
     cmpColor: { n: '比色', e: '🌈', f: [['x', 'X 坐标'], ['y', 'Y 坐标'], ['c', '期望颜色', 'color'], ['sim', '相似度 %'], ['go', '颜色对 → 跳到第几步'], ['els', '不对 → 跳到第几步'], ['d', '之后等待 ms']], def: { x: 50, y: 50, c: '#FFFFFF', sim: 95, go: 0, els: 0, d: 200 } },
-    findImage: { n: '找图', e: '🖼', c: 1, f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300 }, pct: ['rx', 'ry', 'rw', 'rh'] }
+    findImage: { n: '找图', e: '🖼', c: 1, f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300 }, pct: ['rx', 'ry', 'rw', 'rh'] },
+    set: { n: '赋值', e: '📝', f: [['k', '变量名', 'text'], ['v', '值（可写 {{变量}}）', 'var'], ['d', '之后等待 ms']], def: { k: 'n', v: '', d: 100 } },
+    math: { n: '运算', e: '🧮', f: [['k', '存到哪个变量', 'text'], ['e', '算式（不用加 {{}}）', 'expr'], ['d', '之后等待 ms']], def: { k: 'n', e: 'n+1', d: 100 } },
+    cmpVar: { n: '比变量', e: '⚖️', f: [['l', '左边', 'var'], ['op', '怎么比', 'sel:cmpop'], ['r', '右边', 'var'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { l: 'n', op: '>=', r: '3', go: 0, els: 0, d: 100 } }
   };
+  var CMP_OP = { '==': '等于', '!=': '不等于', '>': '大于', '>=': '大于等于', '<': '小于', '<=': '小于等于' };
   var KEYS = ['back:返回', 'home:桌面', 'recents:最近任务', 'notif:通知栏', 'quick:快捷设置', 'lock:锁屏', 'power:电源菜单', 'split:分屏'];
   var OPTS = {
     ifmode: [['text', '屏幕上有这个字'], ['pkg', '当前是这个 App']],
     cntmode: [['add', '往上加'], ['reset', '清零']],
-    multi: [['twoTap', '双指齐点'], ['twoLong', '双指按住'], ['pinch', '双指捏合'], ['spread', '双指张开']]
+    multi: [['twoTap', '双指齐点'], ['twoLong', '双指按住'], ['pinch', '双指捏合'], ['spread', '双指张开']],
+    cmpop: [['==', '等于'], ['!=', '不等于'], ['>', '大于'], ['>=', '大于等于'], ['<', '小于'], ['<=', '小于等于']]
   };
   var MULTI_N = { twoTap: '双指齐点', twoLong: '双指按住', pinch: '捏合', spread: '张开' };
   var TG = {
@@ -122,6 +127,10 @@
         + '%，对跳' + jumpTxt(a.go) + ' / 不对跳' + jumpTxt(a.els);
       case 'findImage': return '找图「' + (a.tpl || '未选') + '」像≥' + (a.sim || 90) + '%'
         + (a.click ? ' 并点击' : '') + '，找到跳' + jumpTxt(a.go) + ' / 没找到跳' + jumpTxt(a.els);
+      case 'set': return (a.k || '?') + ' = ' + (a.v === '' ? '（空）' : a.v);
+      case 'math': return (a.k || '?') + ' = ' + (a.e || '');
+      case 'cmpVar': return '若 ' + (a.l || '0') + ' ' + (CMP_OP[a.op] || a.op) + ' ' + (a.r || '0')
+        + ' → 跳' + jumpTxt(a.go) + '，否则跳' + jumpTxt(a.els);
     }
     return '';
   }
@@ -136,6 +145,7 @@
     var st = jcall('status'); if (st) S.st = st;
     var p = jcall('prefs'); if (p) S.prefs = p;
     var t = jcall('triggers'); if (t) S.triggers = t;
+    var b = jcall('builtinVars'); if (b) S.builtin = b;
     loadCap();
     loadRec();          // 回到前台时把录制结果一起拉回来，不然会显示“还没录到”
     applyTheme();
@@ -568,7 +578,15 @@
       + '· 坐标搞不准？用「录制」自动抓点，比手填准多了。<br>'
       + '· 换机型怕跑偏？动作里打开「百分比坐标」。<br>'
       + '· 想假装是人手在点？用「随机点」带点抖动，再开等待抖动。<br>'
-      + '· 跑疯了怎么办？双击悬浮球，或者下拉通知栏点停止。</div></div>';
+      + '· 跑疯了怎么办？双击悬浮球，或者下拉通知栏点停止。</div></div>'
+      + '<div class="card"><div class="sec">变量怎么用</div><div class="muted">'
+      + '在编辑页先加变量，然后<b>任何字段</b>里都能写 <code>{{变量名}}</code>，跑的时候会换成当时的值。<br>'
+      + '· <code>{{gap}}</code> —— 换成变量的值，前后还能带字，比如「第 {{n}} 次」。<br>'
+      + '· <code>{{n+1}}</code>、<code>{{lastX-20}}</code> —— 里面能算，加减乘除取余都行。<br>'
+      + '· <code>{{rand(800,1200)}}</code> —— 随机等 0.8~1.2 秒，每次都不一样。<br>'
+      + '· <code>{{lastX}}</code>、<code>{{lastY}}</code> —— 上一次找色/找图点中的位置，可以接着操作。<br>'
+      + '· <code>{{loop}}</code>、<code>{{step}}</code>、<code>{{screenW}}</code>、<code>{{cnt.名字}}</code> —— 内置变量。<br>'
+      + '算式写错了不会崩，会原样留在那儿，日志里也看得出来。</div></div>';
   }
 
   var CHANGELOG = [
@@ -663,6 +681,7 @@
     if (c) s.loopCount = Math.max(1, parseInt(c.value || '1', 10) || 1);
     var w = document.getElementById('sdelay');
     if (w) s.startDelay = Math.max(0, parseInt(w.value || '0', 10) || 0);
+    syncVars(s);
   }
 
   function viewEditor(s) {
@@ -681,8 +700,10 @@
       + '<div class="kv"><span>找文字找不到就停下</span>' + sw('stopOnFail', !!s.stopOnFail) + '</div>'
       + '</div>';
 
+    h += varsCard(s);
+
     h += '<div class="row" style="margin:0 2px 10px"><div class="grow muted">' + acts.length + ' 个动作'
-      + '<div class="tiny" style="margin-top:2px">跳转填第几步：0=下一步，−1=收工，−2=重来一轮</div></div>'
+      + '<div class="tiny" style="margin-top:2px">跳转填第几步（就是左边那个序号）：0=下一步，−1=收工，−2=重来一轮</div></div>'
       + '<button class="btn sm ok" data-act="run" data-id="' + s.id + '">▶ 试跑</button>'
       + '<button class="btn sm ghost" data-act="addAct">＋ 加动作</button></div>';
 
@@ -735,6 +756,13 @@
           + '<span class="row" style="gap:8px"><span class="swatch" style="background:' + esc(a[key] || '#000') + '" data-swatch="' + key + '"></span>'
           + '<input data-field="' + key + '" type="text" value="' + esc(a[key] == null ? '' : a[key]) + '" class="grow"></span></label>'
           + '<button class="btn ghost wide" style="margin:0 0 4px" data-act="pickColor" data-field-for="' + key + '">🎨 截图取色</button>';
+      } else if (kind === 'var' || kind === 'expr') {
+        h += '<label class="f"><span>' + label + '</span>'
+          + '<input data-field="' + key + '" type="text" value="' + esc(a[key] == null ? '' : a[key]) + '"></label>'
+          + '<div class="row" style="margin:-4px 0 6px;gap:6px">'
+          + '<button class="btn sm ghost" data-act="insVar" data-field-for="' + key + '">🧩 插入变量</button>'
+          + (kind === 'expr' ? '<button class="btn sm ghost" data-act="tryExpr" data-field-for="' + key + '">= 试算</button>' : '')
+          + '</div>';
       } else if (kind && kind.indexOf('sel:') === 0) {
         var optKey = kind.slice(4);
         var opts = OPTS[optKey] || [];
@@ -767,6 +795,118 @@
       + '<button class="btn ghost grow" data-act="cancelAct">取消</button>'
       + '<button class="btn ok grow" data-act="saveAct" data-i="' + i + '">保存</button></div>';
     return h;
+  }
+
+  // ---------- 脚本变量 ----------
+  function addVar() {
+    var s = findScript(S.editId);
+    if (!s) return;
+    if (!s.vars) s.vars = [];
+    s.vars.push({ k: 'v' + (s.vars.length + 1), v: '0' });
+    saveScripts();
+    render();
+  }
+
+  function delVar(i) {
+    var s = findScript(S.editId);
+    if (!s || !s.vars) return;
+    s.vars.splice(i, 1);
+    saveScripts();
+    render();
+  }
+
+  /** 变量卡片：脚本一开始的初值，跑起来之后改的是运行时的副本，不写回脚本 */
+  function varsCard(s) {
+    var vs = s.vars || [];
+    var h = '<div class="card"><div class="sec">变量（初值）'
+      + '<span class="tiny" style="font-weight:400;margin-left:6px">任何字段都能写 {{变量名}}</span></div>';
+    if (!vs.length) {
+      h += '<div class="muted">还没有变量。加了变量，坐标、等待时间这些就能算出来，'
+        + '比如「等 {{gap}} 毫秒」「点 ({{lastX}}, {{lastY}})」。</div>';
+    }
+    for (var i = 0; i < vs.length; i++) {
+      h += '<div class="row" style="gap:6px;margin-bottom:6px">'
+        + '<input class="grow" data-var-k="' + i + '" value="' + esc(vs[i].k) + '" placeholder="变量名" style="flex:0 0 38%">'
+        + '<input class="grow" data-var-v="' + i + '" value="' + esc(vs[i].v) + '" placeholder="初始值">'
+        + '<button class="btn sm ghost" data-act="delVar" data-i="' + i + '">✕</button></div>';
+    }
+    h += '<button class="btn wide ghost" style="margin-top:2px" data-act="addVar">＋ 加个变量</button>';
+    // 运行时变量值（如果脚本正在跑）
+    var rv = S.st && S.st.vars;
+    if (rv && rv.length) {
+      h += '<div class="sec" style="margin-top:12px">脚本跑起来后，现在这几个变量的值</div>'
+        + '<div class="tiny" style="margin:-4px 0 6px">跟上面的初值不一样是正常的：上面的只有点「保存」才会写进脚本。</div>'
+        + '<div class="wrap" style="gap:5px">';
+      for (var j = 0; j < rv.length; j++) {
+        h += '<span class="chip">' + esc(rv[j].k) + ' = ' + esc(rv[j].v === '' ? '空' : rv[j].v) + '</span>';
+      }
+      h += '</div>';
+    }
+    return h + '</div>';
+  }
+
+  /** 把变量卡里的输入收进脚本 */
+  function syncVars(s) {
+    var ks = document.querySelectorAll('[data-var-k]');
+    var vs = document.querySelectorAll('[data-var-v]');
+    if (!ks.length) return;
+    var out = [];
+    for (var i = 0; i < ks.length; i++) {
+      var k = ks[i].value.trim();
+      if (!k) continue;
+      out.push({ k: k, v: vs[i] ? vs[i].value : '' });
+    }
+    s.vars = out;
+  }
+
+  // ---------- 插入变量 ----------
+  /** 在当前动作表单里就地展开变量列表（不用弹层，免得关掉时把表单也带走） */
+  function toggleVarMenu(btn, field) {
+    var old = document.getElementById('varmenu');
+    if (old) { old.parentNode.removeChild(old); return; }
+    var s = findScript(S.editId);
+    var list = [];
+    var vs = (s && s.vars) || [];
+    for (var i = 0; i < vs.length; i++) {
+      if (!vs[i].k) continue;
+      list.push(['{{' + vs[i].k + '}}', vs[i].k + ' = ' + (vs[i].v === '' ? '空' : vs[i].v), '我的变量']);
+    }
+    var bi = S.builtin || [];
+    for (var j = 0; j < bi.length; j++) list.push(['{{' + bi[j].k + '}}', bi[j].k + ' · ' + bi[j].d, '内置']);
+    var h = '<div class="varmenu" id="varmenu">';
+    if (!list.length) {
+      h += '<div class="tiny">还没有变量。去编辑器上面的「变量」卡加一个，内置变量要等 App 起来才能读到。</div>';
+    }
+    for (var k = 0; k < list.length; k++) {
+      h += '<button class="btn sm ghost wide" style="text-align:left;margin-bottom:4px" data-act="insVarGo"'
+        + ' data-f="' + esc(field) + '" data-v="' + esc(list[k][0]) + '">'
+        + '<span class="chip">' + esc(list[k][2]) + '</span> ' + esc(list[k][1]) + '</button>';
+    }
+    h += '</div>';
+    btn.insertAdjacentHTML('afterend', h);
+  }
+
+  /** 把 {{...}} 插到输入框当前光标处，不重渲染表单（重渲染会丢掉别的字段改动） */
+  function insertVar(field, txt) {
+    var inp = document.querySelector('#sheet [data-field="' + field + '"]');
+    var menu = document.getElementById('varmenu');
+    if (menu) menu.parentNode.removeChild(menu);
+    if (!inp) return;
+    var v = inp.value || '', p = inp.selectionStart;
+    if (p == null) p = v.length;
+    inp.value = v.slice(0, p) + txt + v.slice(p);
+    inp.focus();
+    try { inp.setSelectionRange(p + txt.length, p + txt.length); } catch (e) { }
+  }
+
+  function tryExpr(field) {
+    var inp = document.querySelector('#sheet [data-field="' + field + '"]');
+    if (!inp) return;
+    var e = (inp.value || '').trim();
+    if (!e) { toast('先写个算式'); return; }
+    var r = call('tryExpr', e);
+    if (r.indexOf('err:') === 0) { toast(r.slice(4)); return; }
+    toast('算出来是 ' + r);
   }
 
   function sheetPickIcon(id) {
@@ -1113,6 +1253,11 @@
       case 'reqCap': ok(call('reqCap')); break;
       case 'capStop': ok(call('capStop')); setTimeout(refreshAll, 300); break;
       case 'shotRefresh': if (loadShot()) { sheet(shotPanel(S.pick && S.pick.mode)); bindShotCanvas(S.pick && S.pick.mode); } break;
+      case 'insVar': toggleVarMenu(el, el.dataset.fieldFor); break;
+      case 'insVarGo': insertVar(el.dataset.f, el.dataset.v); break;
+      case 'tryExpr': tryExpr(el.dataset.fieldFor); break;
+      case 'addVar': addVar(); break;
+      case 'delVar': delVar(+el.dataset.i); break;
       case 'pickColor':
         S.pick = { field: el.dataset.fieldFor, mode: 'color' };
         if (!S.shot && !loadShot()) break;
@@ -1219,6 +1364,16 @@
     render();
   }
 
+  /** 这个字段该当文本存还是当数字存（按动作定义里的类型来定，别一律转数字） */
+  function fieldIsText(t, key) {
+    var fs = (TYPES[t] && TYPES[t].f) || [];
+    var kind = '';
+    for (var i = 0; i < fs.length; i++) if (fs[i][0] === key) kind = fs[i][2] || '';
+    if (kind === 'text' || kind === 'var' || kind === 'expr' || kind === 'color' || kind === 'key') return true;
+    if (kind.indexOf('sel:') === 0) return true;
+    return key === 's' || key === 'p';   // 文案与包名一律按文本
+  }
+
   function saveAct(i) {
     var s = findScript(S.editId);
     var a = s.actions[i];
@@ -1227,8 +1382,11 @@
       var f = fields[q], k = f.dataset.field;
       if (f.classList.contains('switch')) { a[k] = f.classList.contains('on'); continue; }
       if (f.tagName === 'SELECT') { a[k] = f.value; continue; }
-      if (k === 's' || k === 'p') { a[k] = f.value; }
-      else a[k] = num(f.value, 0);
+      var raw = f.value;
+      if (fieldIsText(a.t, k)) { a[k] = raw; continue; }
+      // 数字字段：能转就转，转不了（比如填的是 {{lastX}}）就原样留着
+      var n = num(raw, NaN);
+      a[k] = isNaN(n) ? raw : n;
     }
     saveScripts();
     closeSheet();

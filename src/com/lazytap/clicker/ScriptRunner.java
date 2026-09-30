@@ -48,6 +48,8 @@ public final class ScriptRunner {
     private final java.util.HashMap<String, Integer> counters = new java.util.HashMap<>();
     /** 最近一次图色命中的坐标，形如 "x,y"，供后续动作引用 */
     private final java.util.HashMap<String, String> hits = new java.util.HashMap<>();
+    /** 脚本变量：每次开跑从脚本初值重置，任何动作字段都能写 {{变量}} */
+    private final Vars vars = new Vars();
 
     ScriptRunner() {
         thread.start();
@@ -117,6 +119,13 @@ public final class ScriptRunner {
         index = 0;
         repeatLeft = 0;
         counters.clear();
+        hits.clear();
+        vars.load(sc.optJSONArray("vars"));   // 变量每次开跑都从脚本里的初值开始
+        vars.loop = 1;                        // {{loop}} 从第一轮开始数
+        vars.cnt = counters;                  // 让 {{cnt.名字}} 能读到计数器的值
+        TapService ts = TapService.get();
+        vars.screenW = ts != null ? ts.screenW() : 0;
+        vars.screenH = ts != null ? ts.screenH() : 0;
         ScriptStore.touchRun(sc);
         Prefs.put("lastScript", currentId);
         log("开跑：" + sc.optString("name", "未命名"));
@@ -157,6 +166,7 @@ public final class ScriptRunner {
             if (loopLeft == -1 || loopLeft > 1) {
                 if (loopLeft > 1) loopLeft--;
                 index = 0;
+                vars.loop++;                 // {{loop}} 跟着轮次走
                 log("第 " + ((System.currentTimeMillis() - loopStart) / 1000 + 1) + " 秒：再来一轮");
                 h.postDelayed(this::step, Math.max(50, (long) (300 * speed())));
                 return;
@@ -166,12 +176,14 @@ public final class ScriptRunner {
             status("stopped", "done");
             return;
         }
-        JSONObject a = actions.optJSONObject(index);
-        if (a == null) {
+        JSONObject raw = actions.optJSONObject(index);
+        if (raw == null) {
             index++;
             h.post(this::step);
             return;
         }
+        vars.step = index + 1;       // {{step}} 从 1 开始
+        JSONObject a = vars.bind(raw);   // 把字段里的 {{}} 换成求值结果
         int rep = Math.max(1, a.optInt("repeat", 1));
         if (repeatLeft <= 0) repeatLeft = rep;
         repeatLeft--;
@@ -216,6 +228,12 @@ public final class ScriptRunner {
         switch (t) {
             case "if":
                 return execIf(svc, a);
+            case "set":
+                return execSet(a);
+            case "math":
+                return execMath(a);
+            case "cmpVar":
+                return execCmpVar(a);
             case "count":
                 return execCount(a);
             case "cmpColor":
@@ -435,6 +453,7 @@ public final class ScriptRunner {
         if (hit != null) {
             log("找到颜色 @(" + hit[0] + "," + hit[1] + ") 像 " + hit[2] + "%");
             hits.put("color", hit[0] + "," + hit[1]);
+            rememberHit(hit[0], hit[1], hit[2]);
             if (a.optBoolean("click", true)) svc.tap(hit[0], hit[1], 60);
             return jump(a, true);
         }
@@ -461,6 +480,7 @@ public final class ScriptRunner {
         if (hit != null) {
             log("找到图「" + name + "」@(" + hit[0] + "," + hit[1] + ") 像 " + hit[2] + "%");
             hits.put("image", hit[0] + "," + hit[1]);
+            rememberHit(hit[0], hit[1], hit[2]);   // 记进 lastX/lastY，后面的动作能直接引用
             if (a.optBoolean("click", true)) svc.tap(hit[0], hit[1], 60);
             return jump(a, true);
         }
@@ -488,12 +508,115 @@ public final class ScriptRunner {
         return new int[]{x0, y0, x1, y1};
     }
 
+    /** 把命中坐标写进变量，后续动作就能用 {{lastX}} {{lastY}} 接着操作 */
+    private void rememberHit(int x, int y, int sim) {
+        vars.put("lastX", String.valueOf(x));
+        vars.put("lastY", String.valueOf(y));
+        vars.put("lastSim", String.valueOf(sim));
+    }
+
     /** 命中走 go，没命中走 els，语义与“如果”一致 */
     private static int jump(JSONObject a, boolean hit) {
         int v = hit ? a.optInt("go", 0) : a.optInt("els", 0);
         if (v == -1) return JUMP_END;
         if (v == -2) return JUMP_LOOP;
         return v;
+    }
+
+    // ---------- 变量 ----------
+
+    /** 赋值：值可以是常量、也可以是 {{另一个变量}} / {{内置变量}} */
+    private int execSet(JSONObject a) {
+        String k = a.optString("k", "").trim();
+        if (k.isEmpty()) {
+            log("赋值没填变量名，跳过");
+            return 0;
+        }
+        String v = a.optString("v", "");   // {{}} 已在插值阶段算好
+        vars.put(k, v);
+        log("变量 " + k + " = " + (v.isEmpty() ? "（空）" : v));
+        return 0;
+    }
+
+    /** 运算：表达式直接写，不用加 {{}}，比如 n+1、rand(1,10)、lastX-20 */
+    private int execMath(JSONObject a) {
+        String k = a.optString("k", "").trim();
+        String e = a.optString("e", "").trim();
+        if (k.isEmpty()) {
+            log("运算没填变量名，跳过");
+            return 0;
+        }
+        if (e.isEmpty()) {
+            log("运算没写算式，跳过");
+            return 0;
+        }
+        String r = vars.eval(e);
+        if (r == null) {
+            log("算式读不懂：" + e + "（当成原样存进去）");
+            vars.put(k, e);
+            return 0;
+        }
+        vars.put(k, r);
+        log("算 " + k + " = " + e + " → " + r);
+        return 0;
+    }
+
+    /** 比较变量：成立走 go，不成立走 els，与「如果」同一套跳转语义 */
+    private int execCmpVar(JSONObject a) {
+        String l = a.optString("l", "").trim();
+        String r = a.optString("r", "").trim();
+        String op = a.optString("op", "==");
+        boolean hit = cmpVals(l, op, r);
+        log("比较 " + l + " " + op + " " + r + (hit ? " ✓成立" : " ✗不成立"));
+        return jump(a, hit);
+    }
+
+    /** 两边都能是表达式，看着像数字就按数值比，否则按字符串比 */
+    private boolean cmpVals(String l, String op, String r) {
+        String lv = valOf(l), rv = valOf(r);
+        boolean num = isNum(lv) && isNum(rv);
+        if ("==" .equals(op)) return num ? dbl(lv) == dbl(rv) : lv.equals(rv);
+        if ("!=" .equals(op)) return num ? dbl(lv) != dbl(rv) : !lv.equals(rv);
+        double x = dbl(lv), y = dbl(rv);
+        if (">" .equals(op)) return x > y;
+        if (">=" .equals(op)) return x >= y;
+        if ("<" .equals(op)) return x < y;
+        return x <= y;
+    }
+
+    /** 先当表达式算，算不出来就当普通文本 */
+    private String valOf(String s) {
+        if (s == null || s.isEmpty()) return "";
+        String e = vars.eval(s);
+        return e == null ? s : e;
+    }
+
+    private static boolean isNum(String s) {
+        if (s == null || s.trim().isEmpty()) return false;
+        try {
+            Double.parseDouble(s.trim());
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static double dbl(String s) {
+        try {
+            return Double.parseDouble(s.trim());
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** 给界面看运行时变量值（调试用） */
+    public JSONArray varSnapshot() {
+        return vars.snapshot();
+    }
+
+    /** 拿当前变量值试算一段表达式，界面上即时预览 */
+    public String tryEval(String e) {
+        return vars.eval(e);
     }
 
     /** 计数器：加一 / 重置，达到次数就跳步或收工 */
