@@ -102,6 +102,10 @@ public class TapService extends AccessibilityService {
             // 少任何一个 onKeyEvent 一次都不会被调用 —— 不报错，纯粹静默失效，很难查。
             // （API 34 起 AccessibilityServiceInfo.canRequestFilterKeyEvents 字段已移除，只能走 XML）
             info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
+            // v2.4.0：想拿到 getViewIdResourceName()（控件 id）必须带这个 flag。
+            // 不带它 id 恒为 null —— 不报错、不崩溃，就是按 id 找永远找不到，
+            // 和上面音量键那次是同一类静默失效。（API 18 起就有，minSdk 24 不用做版本判断）
+            info.flags |= AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             setServiceInfo(info);
         }
         ScriptRunner.get().setListener((type, data) -> {
@@ -355,12 +359,20 @@ public class TapService extends AccessibilityService {
         }
     }
 
-    /** 按文本 / 描述查找节点，nth 从 1 开始 */
+    /** 按文字 / 描述查找节点，nth 从 1 开始（v2.3.0 的老签名，行为不变） */
     public AccessibilityNodeInfo findNode(String text, boolean contains, boolean clickableOnly, int nth) {
+        return findNode(NodeMatch.of(text, contains), clickableOnly, nth);
+    }
+
+    /**
+     * 按一组条件查找节点，nth 从 1 开始。
+     * 条件怎么算命中全在 NodeMatch 里（四路取「且」），这里只管遍历树和回收。
+     */
+    public AccessibilityNodeInfo findNode(NodeMatch q, boolean clickableOnly, int nth) {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return null;
         List<AccessibilityNodeInfo> hits = new ArrayList<>();
-        collect(root, text, contains, clickableOnly, hits, 0);
+        collect(root, q, clickableOnly, hits, 0, NodeMatch.capFor(nth));
         if (hits.size() >= nth && nth > 0) {
             AccessibilityNodeInfo want = hits.get(nth - 1);
             for (int i = 0; i < hits.size(); i++) {
@@ -372,24 +384,20 @@ public class TapService extends AccessibilityService {
         return null;
     }
 
-    private void collect(AccessibilityNodeInfo node, String text, boolean contains,
-                         boolean clickableOnly, List<AccessibilityNodeInfo> hits, int depth) {
-        if (node == null || depth > 22 || hits.size() > 40) return;
-        CharSequence cs = node.getText();
-        CharSequence cd = node.getContentDescription();
-        boolean match = false;
-        if (contains) {
-            match = (cs != null && cs.toString().contains(text)) || (cd != null && cd.toString().contains(text));
-        } else {
-            match = (cs != null && cs.toString().equals(text)) || (cd != null && cd.toString().equals(text));
-        }
+    private void collect(AccessibilityNodeInfo node, NodeMatch q, boolean clickableOnly,
+                         List<AccessibilityNodeInfo> hits, int depth, int cap) {
+        // cap 而不是写死的 40：以前一页里第 41 个往后永远取不到，
+        // index 填大了就静默失效。capFor(nth) 保证要第几个就至少攒够几个。
+        if (node == null || depth > 22 || hits.size() >= cap) return;
+        boolean match = q.matches(node.getText(), node.getContentDescription(),
+                node.getViewIdResourceName());
         if (match && (!clickableOnly || node.isClickable())) {
             hits.add(AccessibilityNodeInfo.obtain(node));
         }
         int n = node.getChildCount();
         for (int i = 0; i < n; i++) {
             AccessibilityNodeInfo c = node.getChild(i);
-            collect(c, text, contains, clickableOnly, hits, depth + 1);
+            collect(c, q, clickableOnly, hits, depth + 1, cap);
             if (c != null) c.recycle();
         }
     }

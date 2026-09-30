@@ -590,27 +590,35 @@ public final class ScriptRunner {
             }
             case "find": {
                 String text = a.optString("s", "");
+                // v2.4.0：这三个新条件读出来交给 NodeMatch 组合（四路取「且」）。
+                // 必须在这里用 a.optString 显式读 —— 把 JSONObject 整个传下去的话，
+                // tools/test/F.java 的字段对账就扫不到，会当成「表单能填、引擎不读」。
+                String desc = a.optString("desc", "");
+                String id = a.optString("id", "");
+                String re = a.optString("re", "");
                 boolean contains = on(a, "contains", true);
                 boolean clickableOnly = on(a, "clickable", false);
                 boolean doClick = on(a, "click", true);
                 int nth = a.optInt("index", 1);
                 long timeout = a.optLong("timeout", 3000);
-                AccessibilityNodeInfo node = svc.findNode(text, contains, clickableOnly, nth);
+                NodeMatch q = NodeMatch.of(text, desc, id, re, contains);
+                if (q.badRe()) logW("正则写错了：「" + re + "」，这一条按找不到处理");
+                AccessibilityNodeInfo node = svc.findNode(q, clickableOnly, nth);
                 if (node == null && timeout > 0) {
                     // v2.3.0：以前这里是「等 min(timeout,2000) 后再试一次」——
                     // 填 10 秒只等 2 秒，而且只试第二次就放弃了，典型的静默失效。
                     // 现在改成在 timeout 内真轮询，找到就收手。
-                    logW("没找到「" + text + "」，最多再等 " + timeout + "ms");
-                    node = waitFind(svc, text, contains, clickableOnly, nth, timeout);
+                    logW("没找到 " + q.describe() + "，最多再等 " + timeout + "ms");
+                    node = waitFind(svc, q, clickableOnly, nth, timeout);
                 }
                 if (node != null) {
                     Rect r = new Rect();
                     node.getBoundsInScreen(r);
-                    log("找到「" + text + "」@" + r.centerX() + "," + r.centerY());
+                    log("找到 " + q.describe() + " @" + r.centerX() + "," + r.centerY());
                     if (doClick) svc.tap(r.centerX(), r.centerY(), 60);
                     node.recycle();
                 } else {
-                    logW("没找到「" + text + "」，跳过");
+                    logW("没找到 " + q.describe() + "，跳过");
                     if (script != null && on(script, "stopOnFail", false)) {
                         running = false;
                         logE("按剧本：找不到就收工");
@@ -631,9 +639,9 @@ public final class ScriptRunner {
      * 每片都检查一次 running，所以「停止」最多延迟一片（250ms）生效——
      * 比原来那种 postDelayed 一次就不管了的做法可控得多。
      */
-    private AccessibilityNodeInfo waitFind(TapService svc, String text, boolean contains,
+    private AccessibilityNodeInfo waitFind(TapService svc, NodeMatch q,
                                            boolean clickableOnly, int nth, long timeout) {
-        return pollUntil(deadlineOf(timeout), "找文字", () -> svc.findNode(text, contains, clickableOnly, nth));
+        return pollUntil(deadlineOf(timeout), "找节点", () -> svc.findNode(q, clickableOnly, nth));
     }
 
     /** 把「最多等多久」换算成绝对截止时刻，顺手夹一下上限 */
@@ -693,13 +701,18 @@ public final class ScriptRunner {
             log("当前应用 " + cur + (hit ? " ✓对上" : " ✗不是"));
         } else {
             String text = a.optString("s", "");
+            String desc = a.optString("desc", "");   // v2.4.0
+            String id = a.optString("id", "");       // v2.4.0
+            String re = a.optString("re", "");       // v2.4.0
             boolean contains = on(a, "contains", true);
             boolean clickableOnly = on(a, "clickable", false);
             int nth = a.optInt("index", 1);
-            AccessibilityNodeInfo node = svc.findNode(text, contains, clickableOnly, nth);
+            NodeMatch q = NodeMatch.of(text, desc, id, re, contains);
+            if (q.badRe()) logW("正则写错了：「" + re + "」，这一条按找不到处理");
+            AccessibilityNodeInfo node = svc.findNode(q, clickableOnly, nth);
             hit = node != null;
             if (node != null) node.recycle();
-            log((hit ? "✓ 有" : "✗ 没") + "「" + text + "」");
+            log((hit ? "✓ 有" : "✗ 没") + q.describe());
         }
         int go = hit ? a.optInt("go", 0) : a.optInt("els", 0);
         if (go == -1) go = JUMP_END;
@@ -823,9 +836,17 @@ public final class ScriptRunner {
         }
         if ("text".equals(k)) {
             String text = c.optString("s", "");
-            if (text.isEmpty()) return false;
-            AccessibilityNodeInfo node = svc.findNode(text, on(c, "contains", true),
-                    false, Math.max(1, c.optInt("index", 1)));
+            String desc = c.optString("desc", "");   // v2.4.0
+            String id = c.optString("id", "");       // v2.4.0
+            String re = c.optString("re", "");       // v2.4.0
+            // 四个条件全空才当成「没填」。以前只判 text.isEmpty()，
+            // 于是「只按 id 找」会被这里吃掉 —— 不报错、直接判不成立，标准的静默失效。
+            if (text.isEmpty() && desc.isEmpty() && id.isEmpty() && re.isEmpty()) return false;
+            NodeMatch q = NodeMatch.of(text, desc, id, re, on(c, "contains", true));
+            // v2.4.0：clickable 以前这里写死 false，条件侧比动作侧少一个能力，
+            // 现在跟 find 动作对齐
+            AccessibilityNodeInfo node = svc.findNode(q, on(c, "clickable", false),
+                    Math.max(1, c.optInt("index", 1)));
             if (node == null) return false;
             node.recycle();
             return true;
@@ -891,7 +912,18 @@ public final class ScriptRunner {
     private String shortCond(JSONObject c) {
         String k = c.optString("k", "always");
         switch (k) {
-            case "text": return "屏上有「" + c.optString("s", "") + "」";
+            case "text": {
+                // v2.4.0：条件可能是文字 / 描述 / id / 正则 四个里的任意几个，
+                // 只把 s 打出来的话，按 id 设的条件在日志里看着像「屏上有「」」，没法排查
+                StringBuilder sb = new StringBuilder("屏上有");
+                String s = c.optString("s", ""), d = c.optString("desc", "");
+                String id = c.optString("id", ""), re = c.optString("re", "");
+                if (!s.isEmpty()) sb.append("字「").append(s).append("」");
+                if (!d.isEmpty()) sb.append("描述「").append(d).append("」");
+                if (!id.isEmpty()) sb.append("id「").append(id).append("」");
+                if (!re.isEmpty()) sb.append("正则「").append(re).append("」");
+                return sb.toString();
+            }
             case "pkg": return "当前是 " + c.optString("v", "");
             case "color": return "有颜色 " + c.optString("c", "");
             case "image": return "有图「" + c.optString("tpl", "") + "」";

@@ -78,7 +78,9 @@ fs.mkdirSync(OUT, { recursive: true });
   // 4. 加一个「屏幕上有字」条件
   await clickText('.row .btn', '屏幕上有字');
   await wait(400);
-  await want('有「」', '条件行说明');
+  // v2.4.0：条件摘要升级了——空条件不再显示「有「」」这种没信息量的文案，
+  // 改成明说「没填＝任意节点」，免得用户以为空条件会一直成立
+  await want('没填＝任意节点', '条件行说明');
   await shot('04-cond-one');
 
   // 5. 点「改」，进子页，填字，确定

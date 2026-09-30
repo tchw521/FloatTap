@@ -102,8 +102,10 @@
     text: { n: '输入', e: '⌨️', f: [['s', '要输入的文字', 'text'], ['d', '之后等待 ms']], def: { s: '', d: 300 } },
     launch: { n: '开应用', e: '📱', f: [['p', '包名，如 com.tencent.mm', 'text'], ['d', '之后等待 ms']], def: { p: '', d: 1500 } },
     // v2.3.0：clickable 引擎一直在读（只找能点的控件），但表单里没入口，等于躺了三个版本
-    find: { n: '找文字', e: '🔍', f: [['s', '屏幕上的文字', 'text'], ['click', '找到就点它', 'switch'], ['contains', '模糊匹配', 'switch'], ['clickable', '只看能点的按钮', 'switch'], ['timeout', '最多等 ms'], ['index', '第几个(1起)'], ['d', '之后等待 ms']], def: { click: true, contains: true, clickable: false, timeout: 3000, index: 1, d: 300 } },
-    if: { n: '如果', e: '🔀', f: [['m', '判断什么', 'sel:ifmode'], ['s', '屏幕上的文字', 'text'], ['p', '应用包名（判断 App 时用）', 'text'], ['contains', '模糊匹配', 'switch'], ['clickable', '只看能点的按钮', 'switch'], ['index', '第几个(1起)'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { m: 'text', s: '', p: '', contains: true, clickable: false, index: 1, go: 0, els: 0, d: 100 } },
+    // v2.4.0：补上 id / desc / re 三个条件。desc 留空＝老样子（文字或描述任一命中），
+    // 填了才是「文字归文字、描述归描述」两边都要满足 —— 这条语义写在标签里，不然用户猜不到
+    find: { n: '找文字', e: '🔍', f: [['s', '屏幕上的文字', 'text'], ['desc', '内容描述（留空＝按老样子，文字或描述任一命中）', 'text'], ['id', '控件 id（ok 或 com.x:id/ok 都行）', 'text'], ['re', '正则（额外收窄，不填不生效）', 'text'], ['click', '找到就点它', 'switch'], ['contains', '模糊匹配', 'switch'], ['clickable', '只看能点的按钮', 'switch'], ['timeout', '最多等 ms'], ['index', '第几个(1起)'], ['d', '之后等待 ms']], def: { s: '', desc: '', id: '', re: '', click: true, contains: true, clickable: false, timeout: 3000, index: 1, d: 300 } },
+    if: { n: '如果', e: '🔀', f: [['m', '判断什么', 'sel:ifmode'], ['s', '屏幕上的文字', 'text'], ['desc', '内容描述（留空＝按老样子）', 'text'], ['id', '控件 id', 'text'], ['re', '正则', 'text'], ['p', '应用包名（判断 App 时用）', 'text'], ['contains', '模糊匹配', 'switch'], ['clickable', '只看能点的按钮', 'switch'], ['index', '第几个(1起)'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { m: 'text', s: '', desc: '', id: '', re: '', p: '', contains: true, clickable: false, index: 1, go: 0, els: 0, d: 100 } },
     count: { n: '计数', e: '🔢', f: [['k', '计数器名字', 'text'], ['mode', '动作', 'sel:cntmode'], ['v', '每次加多少'], ['times', '涨到几次就跳（0=不管）'], ['go', '跳到第几步'], ['resetAfter', '跳完就清零', 'switch'], ['d', '之后等待 ms']], def: { k: 'main', mode: 'add', v: 1, times: 0, go: 0, resetAfter: true, d: 100 } },
     multi: { n: '多指', e: '🖐', c: 1, f: [['m', '手势', 'sel:multi'], ['x', '中心 X'], ['y', '中心 Y'], ['r', '两指间距半径'], ['ms', '动作时长 ms'], ['d', '之后等待 ms']], def: { m: 'twoTap', x: 50, y: 50, r: 80, ms: 400, d: 400 } },
     // step：每隔几个像素采一次样，越大越快越糙（最小 2）。以前表单没这个入口，
@@ -121,7 +123,9 @@
   var CMP_OP = { '==': '等于', '!=': '不等于', '>': '大于', '>=': '大于等于', '<': '小于', '<=': '小于等于' };
   // 条件类型（v2.0.0）：跟自动精灵一样按「条件」组织，不是一个动作只挂一个判断
   var CTYPES = {
-    text: { n: '屏幕上有字', e: '🔤', f: [['s', '要找的字', 'text'], ['contains', '模糊匹配', 'switch'], ['index', '第几个(1起)']], def: { s: '', contains: true, index: 1 }, sum: function (c) { return '有「' + (c.s || '') + '」'; } },
+    // v2.4.0：f 和 def 两边都要加。字段对账器的条件侧有点不对称——
+    // 「能填但不读」看的是 f，「在读但没入口」看的却是 def，少加一边就会被判失效
+    text: { n: '屏幕上有字', e: '🔤', f: [['s', '要找的字', 'text'], ['desc', '内容描述（留空＝文字或描述任一命中）', 'text'], ['id', '控件 id', 'text'], ['re', '正则', 'text'], ['contains', '模糊匹配', 'switch'], ['clickable', '只看能点的按钮', 'switch'], ['index', '第几个(1起)']], def: { s: '', desc: '', id: '', re: '', contains: true, clickable: false, index: 1 }, sum: function (c) { return '有' + (c.s ? '「' + c.s + '」' : '') + (c.desc ? '描述「' + c.desc + '」' : '') + (c.id ? 'id「' + c.id + '」' : '') + (c.re ? '正则「' + c.re + '」' : '') + ((c.s || c.desc || c.id || c.re) ? '' : '（没填＝任意节点）'); } },
     pkg: { n: '当前是某 App', e: '📱', f: [['v', '包名，如 com.tencent.mm', 'text']], def: { v: '' }, sum: function (c) { return '在 ' + (c.v || '?'); } },
     // pct 默认开：区域字段 0/0/100/100 本来就是百分比（全屏），
     // 关掉的话会被当成 100×100 像素，找色只在左上角一小块里搜，看着像「永远找不到」
@@ -154,6 +158,12 @@
   };
   var ICONS = ['📜', '⚡', '🎮', '📺', '🎁', '⏭', '🔨', '🫧', '💰', '🎯', '🍚', '🚀', '❤️', '🧹', '📲', '⏰'];
 
+  /** v2.4.0：找节点的附加条件（描述 / id / 正则），find 和 if 的摘要都用它 */
+  function actTail(a) {
+    return (a.desc ? '·描述「' + a.desc + '」' : '') + (a.id ? '·id「' + a.id + '」' : '')
+      + (a.re ? '·正则「' + a.re + '」' : '');
+  }
+
   function actSummary(a) {
     var t = TYPES[a.t];
     if (!t) return '未知动作';
@@ -169,10 +179,11 @@
       case 'key': return '按 ' + (a.k || 'back');
       case 'text': return '输入「' + (a.s || '') + '」';
       case 'launch': return '打开 ' + (a.p || '');
-      case 'find': return '找「' + (a.s || '') + '」' + (a.click ? ' 并点击' : '') + ' 第' + (a.index || 1) + '个';
+      // v2.4.0：把 id / desc / re 也带进摘要，不然列表里看着还是个「找「」」，分不清按什么找的
+      case 'find': return '找「' + (a.s || '') + '」' + actTail(a) + (a.click ? ' 并点击' : '') + ' 第' + (a.index || 1) + '个';
       case 'if': return a.m === 'pkg'
         ? '若当前是 ' + (a.p || '?') + ' → 跳' + jumpTxt(a.go) + '，否则跳' + jumpTxt(a.els)
-        : '若有「' + (a.s || '') + '」→ 跳' + jumpTxt(a.go) + '，否则跳' + jumpTxt(a.els);
+        : '若有「' + (a.s || '') + '」' + actTail(a) + '→ 跳' + jumpTxt(a.go) + '，否则跳' + jumpTxt(a.els);
       case 'count': return '计数 ' + (a.k || 'main') + (a.mode === 'reset' ? ' 清零' : ' +' + (a.v || 1))
         + (a.times ? '，够 ' + a.times + ' 次跳' + jumpTxt(a.go) : '');
       case 'multi': return (MULTI_N[a.m] || a.m) + ' @' + p + ' (' + a.x + ',' + a.y + ')';
@@ -784,6 +795,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.4.0</div>找节点补上三个新条件：<b>控件 id</b>（填 ok 或 com.xxx:id/ok 都行）、<b>正则</b>（按正则在文字里搜，不用加 ^$）、<b>内容描述</b>（desc）。多个条件全部满足才算命中；描述留空时沿用老样子（文字或描述任一命中），填了才改成「文字归文字、描述归描述」。顺手修掉两个老毛病：只填 id 不填文字以前会被当成「没填」直接判不成立；一屏里第 41 个往后永远取不到（「第几个」填大了就静默失效）。新增 52 条节点匹配单测。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.3.0</div>静默失效大扫除：「等待」动作真的会等了（以前写 5 秒只等 0.3 秒）；「找文字／找色／找图」的超时改成真轮询，不再被硬夹成 2 秒；表单补上「只看能点的按钮」「采样间隔」「超时」等一批引擎一直在读却没入口的开关；双击/长按/随机点新建时不再默认点 (0,0)；按键在低版本上按不动时会明说原因；JS 脚本开始认「开始前等几秒」和「循环几次」。新增字段对账测试，以后表单和引擎对不上会立刻变红。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.2.0</div>运行浮层（可拖拽、位置记住、跑起来自动冒出）、音量键急停、运行日志面板重做（按等级着色＋只看提醒＋复制／清空）。顺手修了进子页不刷新、以及编译失败照样打包出缺类 APK 这两个真问题。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.1.0</div>动作分组 + 四种跑法（顺序／同时／打乱／随机挑一个），手势类分组会合成一次多指手势派出去。',
@@ -2094,7 +2106,9 @@
     for (var i = 0; i < fs.length; i++) if (fs[i][0] === key) kind = fs[i][2] || '';
     if (kind === 'text' || kind === 'var' || kind === 'expr' || kind === 'color' || kind === 'key') return true;
     if (kind.indexOf('sel:') === 0) return true;
-    return key === 's' || key === 'p';   // 文案与包名一律按文本
+    // v2.4.0：id / desc / re 一律按文本存。上面 kind 标了 'text' 其实已经接住了，
+    // 这里再补一道是防以后有人手滑删掉 kind —— 被当成数字的话 desc 填 3.0 会存成 3
+    return key === 's' || key === 'p' || key === 'id' || key === 'desc' || key === 're';
   }
 
   function saveAct(i) {
@@ -2203,7 +2217,9 @@
       var f = fs[q], k = f.dataset.cfield;
       if (f.classList.contains('switch')) { c[k] = swVal(k, f.classList.contains('on')); continue; }
       var raw = f.value;
-      if (k === 'v' || k === 's' || k === 'c' || k === 'tpl') { c[k] = raw; continue; }   // 可能填 {{变量}}
+      // v2.4.0：id / desc / re 必须在这个白名单里，不能靠下面 isNaN → raw 那条兜底。
+      // id 填 2131427456 会被 num() 转成数字，java 侧 optString 再读回来就串了味
+      if (k === 'v' || k === 's' || k === 'c' || k === 'tpl' || k === 'id' || k === 'desc' || k === 're') { c[k] = raw; continue; }   // 可能填 {{变量}}
       var n = num(raw, NaN);
       c[k] = isNaN(n) ? raw : n;
     }

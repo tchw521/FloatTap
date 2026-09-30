@@ -133,6 +133,18 @@ public class F {
         ok("find 读 clickable（以前表单没入口）", findRead != null && findRead.contains("clickable"));
         ok("find 读 index", findRead != null && findRead.contains("index"));
         ok("find 读 timeout（不再是摆设）", findRead != null && findRead.contains("timeout"));
+        ok("find 读 id（v2.4.0 控件 id）", findRead != null && findRead.contains("id"));
+        ok("find 读 desc（v2.4.0 内容描述）", findRead != null && findRead.contains("desc"));
+        ok("find 读 re（v2.4.0 正则）", findRead != null && findRead.contains("re"));
+        ok("execIf 也认这三个新条件", has(engine, "if", "id") && has(engine, "if", "desc")
+                && has(engine, "if", "re"));
+        // 条件侧的检查两边不对称：「能填但不读」看 f，「在读但没入口」看 def，两边都得有
+        ok("条件 text 在 f 里有 id / desc / re / clickable",
+                has(cfields, "text", "id") && has(cfields, "text", "desc")
+                        && has(cfields, "text", "re") && has(cfields, "text", "clickable"));
+        ok("条件 text 在 def 里也有（不然会被判「在读但没入口」）",
+                cform.get("text") != null && cform.get("text").contains("id")
+                        && cform.get("text").contains("desc") && cform.get("text").contains("re"));
         ok("findColor 读 step（采样间隔）", has(engine, "findColor", "step"));
         ok("findColor 读 timeout（v2.3.0 起真轮询）", has(engine, "findColor", "timeout"));
         ok("findImage 读 timeout（v2.3.0 起真轮询）", has(engine, "findImage", "timeout"));
@@ -147,7 +159,7 @@ public class F {
         // 应用内的「更新日志」曾经停更在 v1.4.0，后面七个版本用户都看不到。
         // 这里钉一条：发新版时必须同步 app.js 里的 CHANGELOG 第一条。
         String top = firstVer(js);
-        ok("应用内更新日志的第一条就是当前版本", "2.3.0".equals(top), "现在是 " + top);
+        ok("应用内更新日志的第一条就是当前版本", "2.4.0".equals(top), "现在是 " + top);
 
         System.out.println(fails == 0 ? "  —— 全通过" : "  —— 失败 " + fails + " 项");
         if (fails > 0) System.exit(1);
