@@ -7,6 +7,11 @@
   var S = {
     tab: 'scripts',
     sub: null,        // 「我的」里的子页：log / trig / settings / about
+    condSub: null,    // 正在改第几个条件（null=在动作主表单）
+    // 进动作编辑器时的快照，用于「取消」真正撤销。
+    // 因为 saveScripts 是把整个 S.scripts 全量写回的，
+    // 光靠「编辑期间不落盘」挡不住——之后任何一次落盘都会把内存里的改动一起带走。
+    editBackup: null,
     scripts: [],
     rec: [],
     st: {},
@@ -58,7 +63,14 @@
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, 1900);
   }
   function uid() { return Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36); }
+  /** 简单深拷贝：默认值里的数组/对象不能直接共用，否则改一个动全身 */
+  function clone(v) {
+    if (v == null || typeof v !== 'object') return v;
+    return JSON.parse(JSON.stringify(v));
+  }
   function num(v, d) { var n = parseFloat(v); return isNaN(n) ? d : n; }
+  /** 开关值：默认存布尔，但 pct 是例外——Java 端按数字读（历史脚本里也是 1/0），存布尔会被当成关 */
+  function swVal(k, on) { return k === 'pct' ? (on ? 1 : 0) : on; }
 
   // ---------- 动作定义 ----------
   var TYPES = {
@@ -75,9 +87,9 @@
     if: { n: '如果', e: '🔀', f: [['m', '判断什么', 'sel:ifmode'], ['s', '屏幕上的文字', 'text'], ['p', '应用包名（判断 App 时用）', 'text'], ['contains', '模糊匹配', 'switch'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { m: 'text', s: '', p: '', contains: true, go: 0, els: 0, d: 100 } },
     count: { n: '计数', e: '🔢', f: [['k', '计数器名字', 'text'], ['mode', '动作', 'sel:cntmode'], ['v', '每次加多少'], ['times', '涨到几次就跳（0=不管）'], ['go', '跳到第几步'], ['resetAfter', '跳完就清零', 'switch'], ['d', '之后等待 ms']], def: { k: 'main', mode: 'add', v: 1, times: 0, go: 0, resetAfter: true, d: 100 } },
     multi: { n: '多指', e: '🖐', c: 1, f: [['m', '手势', 'sel:multi'], ['x', '中心 X'], ['y', '中心 Y'], ['r', '两指间距半径'], ['ms', '动作时长 ms'], ['d', '之后等待 ms']], def: { m: 'twoTap', x: 50, y: 50, r: 80, ms: 400, d: 400 } },
-    findColor: { n: '找色', e: '🎨', c: 1, f: [['c', '目标颜色', 'color'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { c: '#FF6B35', sim: 95, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300 }, pct: ['rx', 'ry', 'rw', 'rh'] },
+    findColor: { n: '找色', e: '🎨', c: 1, f: [['c', '目标颜色', 'color'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { c: '#FF6B35', sim: 95, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300, pct: 1 }, pct: ['rx', 'ry', 'rw', 'rh'] },
     cmpColor: { n: '比色', e: '🌈', f: [['x', 'X 坐标'], ['y', 'Y 坐标'], ['c', '期望颜色', 'color'], ['sim', '相似度 %'], ['go', '颜色对 → 跳到第几步'], ['els', '不对 → 跳到第几步'], ['d', '之后等待 ms']], def: { x: 50, y: 50, c: '#FFFFFF', sim: 95, go: 0, els: 0, d: 200 } },
-    findImage: { n: '找图', e: '🖼', c: 1, f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300 }, pct: ['rx', 'ry', 'rw', 'rh'] },
+    findImage: { n: '找图', e: '🖼', c: 1, f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300, pct: 1 }, pct: ['rx', 'ry', 'rw', 'rh'] },
     set: { n: '赋值', e: '📝', f: [['k', '变量名', 'text'], ['v', '值（可写 {{变量}}）', 'var'], ['d', '之后等待 ms']], def: { k: 'n', v: '', d: 100 } },
     math: { n: '运算', e: '🧮', f: [['k', '存到哪个变量', 'text'], ['e', '算式（不用加 {{}}）', 'expr'], ['d', '之后等待 ms']], def: { k: 'n', e: 'n+1', d: 100 } },
     cmpVar: { n: '比变量', e: '⚖️', f: [['l', '左边', 'var'], ['op', '怎么比', 'sel:cmpop'], ['r', '右边', 'var'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { l: 'n', op: '>=', r: '3', go: 0, els: 0, d: 100 } },
@@ -88,8 +100,10 @@
   var CTYPES = {
     text: { n: '屏幕上有字', e: '🔤', f: [['s', '要找的字', 'text'], ['contains', '模糊匹配', 'switch'], ['index', '第几个(1起)']], def: { s: '', contains: true, index: 1 }, sum: function (c) { return '有「' + (c.s || '') + '」'; } },
     pkg: { n: '当前是某 App', e: '📱', f: [['v', '包名，如 com.tencent.mm', 'text']], def: { v: '' }, sum: function (c) { return '在 ' + (c.v || '?'); } },
-    color: { n: '屏幕上有颜色', e: '🎨', f: [['c', '颜色', 'color'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { c: '#FF6B35', sim: 95, rx: 0, ry: 0, rw: 100, rh: 100 }, pct: 1, sum: function (c) { return '有 ' + (c.c || ''); } },
-    image: { n: '屏幕上有图', e: '🖼', f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100 }, pct: 1, sum: function (c) { return '有图「' + (c.tpl || '未选') + '」'; } },
+    // pct 默认开：区域字段 0/0/100/100 本来就是百分比（全屏），
+    // 关掉的话会被当成 100×100 像素，找色只在左上角一小块里搜，看着像「永远找不到」
+    color: { n: '屏幕上有颜色', e: '🎨', f: [['c', '颜色', 'color'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { c: '#FF6B35', sim: 95, rx: 0, ry: 0, rw: 100, rh: 100, pct: 1 }, pct: 1, sum: function (c) { return '有 ' + (c.c || ''); } },
+    image: { n: '屏幕上有图', e: '🖼', f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100, pct: 1 }, pct: 1, sum: function (c) { return '有图「' + (c.tpl || '未选') + '」'; } },
     time: { n: '到了某个时间', e: '⏰', f: [['v', '时间点，如 09:00', 'text']], def: { v: '09:00' }, sum: function (c) { return '过了 ' + (c.v || ''); } },
     rand: { n: '随机概率', e: '🎲', f: [['v', '成立的概率 %']], def: { v: 50 }, sum: function (c) { return '随机 ' + (c.v || 0) + '%'; } },
     expr: { n: '表达式成立', e: '🧮', f: [['v', '算式，算出来是 1 就算成立', 'expr']], def: { v: 'n>2' }, sum: function (c) { return c.v || ''; } },
@@ -974,6 +988,7 @@
 
   function viewEditor(s) {
     if (s.kind === 'js') return viewJsEditor(s);
+    S.editId = s.id;                       // 进编辑器就认准这个脚本，动作行上的按钮都靠它定位
     var acts = s.actions || [];
     var h = '<div class="card"><div class="row">'
       + '<button class="btn sm ghost" data-act="back">‹ 返回</button>'
@@ -1005,7 +1020,7 @@
       var a = acts[i], t = TYPES[a.t] || { n: a.t, e: '❔' };
       h += '<div class="item"><div class="grip" data-drag="' + i + '" data-list="acts">⋮⋮</div>'
         + '<div class="ic g' + ((i % 6) + 1) + '">' + t.e + '</div>'
-        + '<div class="grow" data-act="editAct" data-i="' + i + '">'
+        + '<div class="grow" data-act="editAct" data-id="' + s.id + '" data-i="' + i + '">'
         + '<div class="t">' + (i + 1) + '. ' + t.n + (a.repeat > 1 ? '<span class="chip">×' + a.repeat + '</span>' : '') + '</div>'
         + '<div class="d">' + esc(actSummary(a)) + '</div></div>'
         + '<div class="acts">'
@@ -1031,6 +1046,7 @@
 
   function sheetEditAct(i) {
     var s = findScript(S.editId);
+    if (!s) { closeSheet(); return ''; }   // 编辑状态丢了就干脆别开弹层，免得改到别的脚本上去
     var a = s.actions[i];
     if (!a) { closeSheet(); return ''; }
     S.editAct = i;
@@ -1287,9 +1303,15 @@
     btn.insertAdjacentHTML('afterend', h);
   }
 
+  /** 主表单用 data-field，条件子页用 data-cfield，两个都得认 */
+  function fieldEl(field) {
+    return document.querySelector('#sheet [data-field="' + field + '"]')
+      || document.querySelector('#sheet [data-cfield="' + field + '"]');
+  }
+
   /** 把 {{...}} 插到输入框当前光标处，不重渲染表单（重渲染会丢掉别的字段改动） */
   function insertVar(field, txt) {
-    var inp = document.querySelector('#sheet [data-field="' + field + '"]');
+    var inp = fieldEl(field);
     var menu = document.getElementById('varmenu');
     if (menu) menu.parentNode.removeChild(menu);
     if (!inp) return;
@@ -1301,7 +1323,7 @@
   }
 
   function tryExpr(field) {
-    var inp = document.querySelector('#sheet [data-field="' + field + '"]');
+    var inp = fieldEl(field);
     if (!inp) return;
     var e = (inp.value || '').trim();
     if (!e) { toast('先写个算式'); return; }
@@ -1474,8 +1496,9 @@
       var sv = document.getElementById('sv');
       if (sv) sv.textContent = '取到颜色 ' + c;
       var field = S.pick && S.pick.field;
-      sheet(sheetEditAct(S.editAct));
-      var inp = document.querySelector('#sheet [data-field="' + field + '"]');
+      // 从条件子页发起的取色，得回到条件子页而不是动作主表单
+      sheet(S.pick && S.pick.sub ? sheetCondEdit(S.pick.sub) : sheetEditAct(S.editAct));
+      var inp = fieldEl(field);
       if (inp) inp.value = c;
       var sw = document.querySelector('#sheet [data-swatch="' + field + '"]');
       if (sw) sw.style.background = c;
@@ -1630,12 +1653,19 @@
         s = findScript(S.editId);
         var t = el.dataset.t;
         var na = { t: t };
-        for (var k in TYPES[t].def) na[k] = TYPES[t].def[k];
+        // 必须深拷贝：def 里的 cs 是数组，浅拷贝会让所有动作共用同一个数组，
+        // 于是往里加条件就污染了默认值，下一个新建的动作会带着上一个的条件
+        for (var k in TYPES[t].def) na[k] = clone(TYPES[t].def[k]);
         s.actions.push(na);
         saveScripts();
+        S.editBackup = { i: s.actions.length - 1, json: null };   // null=新建的，取消就删掉
         sheet(sheetEditAct(s.actions.length - 1));
         break;
-      case 'editAct': sheet(sheetEditAct(+el.dataset.i)); break;
+      case 'editAct':
+        S.editId = el.dataset.id || S.editId;   // 用按钮上带的脚本 id，别依赖上一次的编辑状态
+        S.editBackup = { i: +el.dataset.i, json: JSON.stringify(findScript(S.editId).actions[+el.dataset.i] || {}) };
+        sheet(sheetEditAct(+el.dataset.i));
+        break;
       case 'testAct': ok(call('testAction', JSON.stringify(findScript(S.editId).actions[+el.dataset.i]))); break;
       case 'mvUp':
         s = findScript(S.editId); var i1 = +el.dataset.i;
@@ -1653,8 +1683,13 @@
       case 'delAct':
         s = findScript(S.editId); s.actions.splice(+el.dataset.i, 1); saveScripts(); render();
         break;
-      case 'saveAct': saveAct(+el.dataset.i); break;
-      case 'cancelAct': S.editAct = null; S.pick = null; closeSheet(); break;
+      case 'saveAct': S.editBackup = null; saveAct(+el.dataset.i); break;
+      case 'cancelAct':
+        // 只有「动作编辑器」的取消才回滚；换图标/分享码这类弹层的取消不动数据
+        if (S.editAct != null && S.editBackup) { revertAct(); render(); }
+        S.editBackup = null;
+        S.editAct = null; S.pick = null; S.condSub = null; closeSheet();
+        break;
       case 'pickPoint': picked = null; sheet(sheetPickPoint(+el.dataset.i)); bindCanvas(); break;
       case 'usePoint':
         if (!picked) { toast('先在图上点一下'); return; }
@@ -1700,9 +1735,13 @@
       case 'condEdit': condEdit(+el.dataset.i); break;
       case 'condEditBack': condEditBack(); break;
       case 'condEditSave': condEditSave(+el.dataset.i); break;
-      case 'saveCond': saveCond(+el.dataset.i); break;
+      case 'saveCond': S.editBackup = null; saveCond(+el.dataset.i); break;
       case 'pickColor':
-        S.pick = { field: el.dataset.fieldFor, mode: 'color' };
+        // 条件子页里发起的取色要记下标，取完回到子页（否则会跳回动作主表单）
+        S.pick = {
+          field: el.dataset.fieldFor, mode: 'color',
+          sub: S.condSub == null ? null : S.condSub
+        };
         if (!S.shot && !loadShot()) break;
         sheet(shotPanel('color')); bindShotCanvas('color');
         break;
@@ -1829,7 +1868,7 @@
     var fields = document.querySelectorAll('#sheet [data-field]');
     for (var q = 0; q < fields.length; q++) {
       var f = fields[q], k = f.dataset.field;
-      if (f.classList.contains('switch')) { a[k] = f.classList.contains('on'); continue; }
+      if (f.classList.contains('switch')) { a[k] = swVal(k, f.classList.contains('on')); continue; }
       if (f.tagName === 'SELECT') { a[k] = f.value; continue; }
       var raw = f.value;
       if (fieldIsText(a.t, k)) { a[k] = raw; continue; }
@@ -1842,6 +1881,24 @@
     render();
   }
 
+  /**
+   * 取消动作编辑：还原成进编辑器之前的样子。
+   * 新建的动作直接删掉；编辑已有的用快照覆盖回去。
+   */
+  function revertAct() {
+    var b = S.editBackup;
+    S.editBackup = null;
+    if (!b) return;
+    var s = findScript(S.editId);
+    if (!s || !s.actions) return;
+    if (b.json == null) {                       // 新建的
+      if (b.i >= 0 && b.i < s.actions.length) s.actions.splice(b.i, 1);
+    } else {                                    // 编辑已有的
+      if (b.i >= 0 && b.i < s.actions.length) s.actions[b.i] = JSON.parse(b.json);
+    }
+    saveScripts();
+  }
+
   // ---------- 条件动作的增删改（v2.0.0） ----------
 
   /** 把主表单上的改动收进动作 a（只收 data-field 里的那几个） */
@@ -1849,14 +1906,18 @@
     var fs = document.querySelectorAll('#sheet [data-field]');
     for (var q = 0; q < fs.length; q++) {
       var f = fs[q], k = f.dataset.field;
-      if (f.classList.contains('switch')) { a[k] = f.classList.contains('on'); continue; }
+      if (f.classList.contains('switch')) { a[k] = swVal(k, f.classList.contains('on')); continue; }
       if (k === 'mode') { a.mode = +f.value; continue; }
       var n = num(f.value, NaN);
       a[k] = isNaN(n) ? f.value : n;
     }
   }
 
-  /** 加一个条件：把主表单改动先收好，再往清单里塞一个新的 */
+  /**
+   * 加一个条件：把主表单改动先收好，再往清单里塞一个新的。
+   * 注意这里**不落盘**——中间步骤一落盘，用户点「取消」就撤不回来了，
+   * 只有最后点「保存」（saveCond）才真正写进脚本。
+   */
   function condAdd(k) {
     var s = findScript(S.editId);
     var a = s && s.actions[S.editAct];
@@ -1865,11 +1926,10 @@
     if (!a.cs) a.cs = [];
     var ct = CTYPES[k] || CTYPES.always;
     var c = { k: k };
-    for (var key in ct.def) if (Object.prototype.hasOwnProperty.call(ct.def, key)) c[key] = ct.def[key];
+    for (var key in ct.def) if (Object.prototype.hasOwnProperty.call(ct.def, key)) c[key] = clone(ct.def[key]);
     a.cs.push(c);
-    saveScripts();
     sheet(sheetEditAct(S.editAct));   // 就地重画，回到主表单
-    toast('加了一个条件：' + ct.n);
+    toast('加了一个条件：' + ct.n + '（别忘了点保存）');
   }
 
   function condDel(j) {
@@ -1878,7 +1938,6 @@
     if (!a || !a.cs) return;
     syncCondAct(a);
     a.cs.splice(j, 1);
-    saveScripts();
     sheet(sheetEditAct(S.editAct));
   }
 
@@ -1886,17 +1945,18 @@
     var s = findScript(S.editId);
     var a = s && s.actions[S.editAct];
     if (!a) return;
-    syncCondAct(a);          // 先存主表单，否则从子页返回时改动会丢
-    saveScripts();
+    syncCondAct(a);          // 先收主表单，否则从子页返回时改动会丢
+    S.condSub = j;
     var h = sheetCondEdit(j);
     if (h) sheet(h);
   }
 
   function condEditBack() {
+    S.condSub = null;
     sheet(sheetEditAct(S.editAct));
   }
 
-  /** 子页里点「确定」：把 data-cfield 收进 a.cs[j] */
+  /** 子页里点「确定」：把 data-cfield 收进 a.cs[j]，同样不落盘 */
   function condEditSave(j) {
     var s = findScript(S.editId);
     var a = s && s.actions[S.editAct];
@@ -1905,13 +1965,13 @@
     var fs = document.querySelectorAll('#sheet [data-cfield]');
     for (var q = 0; q < fs.length; q++) {
       var f = fs[q], k = f.dataset.cfield;
-      if (f.classList.contains('switch')) { c[k] = f.classList.contains('on'); continue; }
+      if (f.classList.contains('switch')) { c[k] = swVal(k, f.classList.contains('on')); continue; }
       var raw = f.value;
       if (k === 'v' || k === 's' || k === 'c' || k === 'tpl') { c[k] = raw; continue; }   // 可能填 {{变量}}
       var n = num(raw, NaN);
       c[k] = isNaN(n) ? raw : n;
     }
-    saveScripts();
+    S.condSub = null;
     sheet(sheetEditAct(S.editAct));   // 回主表单，能立刻看到这条的说明变了
     toast('条件改好了');
   }

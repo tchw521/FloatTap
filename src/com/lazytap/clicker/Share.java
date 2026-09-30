@@ -71,14 +71,22 @@ public final class Share {
         a.put(s.optInt("tone", 1));
         a.put(s.optString("kind", ""));
         a.put(s.optString("code", ""));
-        a.put(s.optBoolean("loop", false) ? 1 : 0);
+        a.put(on(s, "loop") ? 1 : 0);
         a.put(s.optInt("loopCount", 1));
         a.put(s.optInt("startDelay", 0));
-        a.put(s.optBoolean("jitter", false) ? 1 : 0);
-        a.put(s.optBoolean("stopOnFail", false) ? 1 : 0);
+        a.put(on(s, "jitter") ? 1 : 0);
+        a.put(on(s, "stopOnFail") ? 1 : 0);
         a.put(s.optJSONArray("actions") != null ? s.optJSONArray("actions") : new JSONArray());
         a.put(s.optJSONArray("vars") != null ? s.optJSONArray("vars") : new JSONArray());
         return a;
+    }
+
+    /**
+     * 读一个开关。存过两种形态：界面上写布尔 true，市场脚本或手改的 JSON 里可能是数字 1。
+     * org.json 对数字求 optBoolean 会抛异常回落 false，光用 optBoolean 会把「开」读成「关」。
+     */
+    private static boolean on(JSONObject s, String k) {
+        return s != null && (s.optBoolean(k, false) || s.optInt(k, 0) == 1);
     }
 
     private static JSONObject unpack(JSONArray a) {

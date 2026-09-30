@@ -6,6 +6,12 @@ local.properties
 *.iml
 .idea/
 
+# 单测的编译产物
+tools/test/out/
+
+# UI 冒烟只在本地跑，依赖不入库
+tools/smoke/node_modules/
+
 # 系统垃圾
 .DS_Store
 Thumbs.db

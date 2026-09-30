@@ -192,11 +192,38 @@ assets/www/                   界面（index.html / app.js / style.css）
 
 ```bash
 export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-tools/34.0.0
-./build.sh 1.8.0 10                       # 参数：版本名 版本码
-# 产出 out/LazyTap-v2.0.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
+./build.sh 2.0.1 12                       # 参数：版本名 版本码
+# 产出 out/LazyTap-v2.0.1.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
 ```
 
 > 无网络时也能构建：整条流水线只依赖本地 Android SDK 和 JDK，不下载任何依赖。
+
+换自己的签名密钥时用环境变量传，不用改脚本：
+
+```bash
+KS_ALIAS=mykey KS_PASS=xxx KEY_PASS=xxx ./build.sh 2.0.1 12
+```
+
+### 云端构建（GitHub Actions）
+
+`.github/workflows/build.yml` 里配好了，推代码就自动编译。这个项目不用 Gradle，
+构建链只有 aapt2 / javac / d8 / zipalign / apksigner，CI 里装个 Android SDK 就能跑，不用联网拉依赖。
+
+| 触发方式 | 干什么 |
+|---|---|
+| 推代码 / 提 PR | 跑单测 + 编译签名，APK 在 Actions 页面下载（保留 90 天） |
+| 推 tag（`git tag v2.0.1 && git push --tags`） | 额外发一个 Release，APK 挂在 Release 里 |
+| Actions 页面手动触发 | 可以手填版本号和版本码 |
+
+正式发布建议配两个仓库 secrets：`KEYSTORE_BASE64`（`base64 -w0 lazytap.jks` 的输出）和
+`KEYSTORE_PASSWORD`。不配也能构建，只是用仓库里自带的开发密钥。
+
+### 跑测试
+
+```bash
+bash tools/test/run-tests.sh      # 纯 Java 单测 104 项，只要装了 JDK 就能跑，不需要模拟器
+cd tools/smoke && npm i && node run.js   # UI 冒烟 78 张截图，需要 chromium
+```
 
 ---
 
@@ -204,12 +231,18 @@ export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-
 
 **已验证**
 
-- 十版 APK 均通过 `apksigner verify`，`aapt2 dump badging` 显示包名、版本、权限、组件声明正确
+- 十一版 APK 均通过 `apksigner verify`，`aapt2 dump badging` 显示包名、版本、权限、组件声明正确
+- **纯 Java 单测 104 项**（条件系统 71 + 分享码 33），零 Android 依赖，CI 里每次提交都跑：
+  条件语义（and/or/count、8 种条件类型、重复检查、参数夹取、停止中断、日志明细）、
+  分享码往返（含 v2.0.0 新增的嵌套 `cs` 数组、中文/emoji/JS 代码、脏数据与坏码容错）
+- **交叉对账了界面与引擎的字段形态**：把界面存的每个字段类型和引擎读取方式全量比对，
+  揪出并修掉了两处「界面写布尔、引擎按数字读」的静默失效（百分比坐标、分享码循环开关）
 - 界面层用 headless Chrome + 模拟原生桥做了完整冒烟：脚本列表、编辑器、触发器增删改、
   新动作类型（如果 / 计数 / 多指 / **找色 / 比色 / 找图**）表单与摘要、**截图取色面板与模板图管理**、
   六种配色、深色模式、平板双栏、横屏布局、**变量卡片 / 插入变量 / 试算**、
   **JS 脚本编辑器 / 示例 / API 文档 / JS 标签**、**脚本市场 / 分享码生成 / 导入（含坏码提示）**，
-  **41 张截图、无控制台报错**
+  **78 张截图、无控制台报错**；另外单独喂了一轮畸形数据（未知动作类型、条件缺字段、
+  字段类型乱写、空脚本、60 步长脚本、超长名字），界面不崩、不白屏
 - **表达式求值器跑了独立基准**：45 项断言覆盖算术优先级、括号、取模、字符串拼接、比较与逻辑、
   六个函数、整数格式化、非法输入容错，**全通过**
 - **引擎语义跑了一遍仿真**：复刻 `step()` 主循环与跳转协议，14 条断言覆盖赋值 / 运算 / 引用变量、

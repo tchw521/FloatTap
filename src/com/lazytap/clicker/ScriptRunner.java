@@ -252,7 +252,7 @@ public final class ScriptRunner {
                 float cx = (float) a.optDouble("x", 0);
                 float cy = (float) a.optDouble("y", 0);
                 float r = (float) a.optDouble("r", 80);
-                if (a.optInt("pct", 0) == 1) {
+                if (pctOn(a)) {
                     cx = cx / 100f * svc.screenW();
                     cy = cy / 100f * svc.screenH();
                     r = r / 100f * svc.screenW();
@@ -267,7 +267,7 @@ public final class ScriptRunner {
             case "random": {
                 float x = (float) a.optDouble("x", 0);
                 float y = (float) a.optDouble("y", 0);
-                if (a.optInt("pct", 0) == 1) { // 百分比坐标，换机型不跑偏
+                if (pctOn(a)) { // 百分比坐标，换机型不跑偏
                     x = x / 100f * svc.screenW();
                     y = y / 100f * svc.screenH();
                 }
@@ -298,7 +298,7 @@ public final class ScriptRunner {
             case "swipe": {
                 float x1 = (float) a.optDouble("x1", 0), y1 = (float) a.optDouble("y1", 0);
                 float x2 = (float) a.optDouble("x2", 0), y2 = (float) a.optDouble("y2", 0);
-                if (a.optInt("pct", 0) == 1) {
+                if (pctOn(a)) {
                     x1 = x1 / 100f * svc.screenW();
                     x2 = x2 / 100f * svc.screenW();
                     y1 = y1 / 100f * svc.screenH();
@@ -430,7 +430,11 @@ public final class ScriptRunner {
     //         rep:0/1, repGap:ms, repMax:N, go:第几步, els:第几步, d:ms }
     // 条件 k 取值：text 屏上有字 / pkg 当前是某 App / color 有颜色 / image 有图 / time 在时间点之后 / rand 随机数 / expr 表达式 / always 恒真
 
-    private static final int C_MAX_MS = 20000;   // 单个条件的等待上限，防止写个 99999 就卡死
+    private static final int C_MAX_MS = 20000;   // 单次等待上限：写个 99999 也不至于睡死
+    private static final int C_MAX_ROUND = 1000; // 重复检查的轮数上限
+
+    /** 上一次条件检查的人话明细，供日志使用 */
+    private String condDetail = "";
 
     /** 多条件判断：满足走 go，不满足走 els；开了「重复检查」就一直等到成功或超上限 */
     private int execCond(TapService svc, JSONObject a) {
@@ -440,16 +444,20 @@ public final class ScriptRunner {
             return jump(a, true);
         }
         boolean repeat = a.optInt("rep", 0) == 1;
-        long gap = Math.max(50, a.optLong("repGap", 800));
-        int max = Math.max(1, a.optInt("repMax", 1));
+        // 间隔夹在 50ms~20s：太小会把 CPU 打满，太大就变成「点了停止却停不下来」
+        long gap = Math.min(C_MAX_MS, Math.max(50, a.optLong("repGap", 800)));
+        int max = Math.max(1, Math.min(a.optInt("repMax", 1), C_MAX_ROUND));
         boolean hit = false;
-        String why = "";
         int round = 0;
         while (true) {
+            // 每轮开头都看一眼：点「停止」时要立刻收手，不能把这一觉睡完
+            if (!running) {
+                log("已经停了，条件检查中断");
+                return 0;
+            }
             round++;
             int[] r = checkCond(svc, a, cs);
             hit = r[0] == 1;
-            why = whyOf(r[1]);
             if (hit || !repeat || round >= max) break;
             log("条件没成，等 " + gap + "ms 再试（第 " + round + "/" + max + " 次）");
             try {
@@ -459,31 +467,35 @@ public final class ScriptRunner {
                 break;
             }
         }
-        log("条件" + (hit ? " ✓成立" : " ✗不成立") + "：" + why
+        if (!running) {
+            log("已经停了，条件检查中断");
+            return 0;
+        }
+        log("条件" + (hit ? " ✓成立" : " ✗不成立") + "：" + condDetail
                 + (repeat && round > 1 ? "（试了 " + round + " 次）" : ""));
         return jump(a, hit);
     }
 
-    /** 返回 {是否成立(1/0), 命中了几个, 总数}，同时把过程写进日志 */
+    /** 返回 {是否成立(1/0), 命中了几个, 总数}，并把每个条件的成败拼成一句人话存进 condDetail */
     private int[] checkCond(TapService svc, JSONObject a, JSONArray cs) {
         int mode = a.optInt("mode", 0);       // 0=and 1=or 2=count
         int need = Math.max(1, a.optInt("n", 1));   // mode=count 时要凑够几个
         int got = 0;
-        boolean first = true;
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < cs.length(); i++) {
             JSONObject c = cs.optJSONObject(i);
             if (c == null) continue;
             boolean ok = oneCond(svc, c);
             if (ok) got++;
-            if (!first) sb.append(mode == 1 ? " 或 " : " 且 ");
-            first = false;
+            if (sb.length() > 0) sb.append(mode == 1 ? " 或 " : " 且 ");
             sb.append(shortCond(c)).append(ok ? "✓" : "✗");
         }
         boolean pass;
         if (mode == 1) pass = got >= 1;                      // 满足一个
         else if (mode == 2) pass = got >= need;              // 满足 N 个
         else pass = got == cs.length();                      // 全部满足
+        condDetail = sb + " → 命中 " + got + "/" + cs.length()
+                + (mode == 2 ? "（要 " + need + " 个）" : "");
         return new int[]{pass ? 1 : 0, got, cs.length()};
     }
 
@@ -546,11 +558,14 @@ public final class ScriptRunner {
         return false;
     }
 
-    /** 多条件同时用到截图时只截一次，省掉几十毫秒 */
+    /**
+     * 同一轮里多个图色条件共用一张截图，省掉几十毫秒。
+     * 缓存只在「一次判断」内有效（1.5 秒），下一轮重新截，
+     * 否则「重复检查直到成功」会一直对着同一张旧图判断，永远等不到变化。
+     */
     private Bitmap shotCached(TapService svc, JSONObject c) {
         long now = System.currentTimeMillis();
-        int life = Math.max(0, Math.min(C_MAX_MS, c.optInt("wait", 0)));
-        if (shotBmp == null || now - shotAt > Math.max(life, 800)) {
+        if (shotBmp == null || now - shotAt > 1500) {
             shotBmp = Capture.shot(svc, 1500);
             shotAt = now;
         }
@@ -581,10 +596,6 @@ public final class ScriptRunner {
         }
     }
 
-    private String whyOf(int got) {
-        return "命中 " + got + " 个";
-    }
-
     // ---------- 图色识别 ----------
     /** 比色：某一点是不是目标颜色，是走 go，否则走 els */
     private int execCmpColor(TapService svc, JSONObject a) {
@@ -594,7 +605,7 @@ public final class ScriptRunner {
             return a.optInt("els", 0) == -1 ? JUMP_END : a.optInt("els", 0);
         }
         int x = a.optInt("x", 0), y = a.optInt("y", 0);
-        if (a.optInt("pct", 0) == 1) {
+        if (pctOn(a)) {
             x = (int) (x / 100f * bmp.getWidth());
             y = (int) (y / 100f * bmp.getHeight());
         }
@@ -654,10 +665,20 @@ public final class ScriptRunner {
         return jump(a, false);
     }
 
+    /**
+     * 坐标是不是按百分比算。
+     * 这个字段存过两种形态：UI 开关以前写布尔 true，内置脚本和分享码里写数字 1。
+     * org.json 对布尔求 optInt 会抛异常并回落 0（等于百分比静默失效），所以两种都得认。
+     */
+    private static boolean pctOn(JSONObject a) {
+        if (a == null) return false;
+        return a.optBoolean("pct", false) || a.optInt("pct", 0) == 1;
+    }
+
     /** 动作里的区域字段（支持百分比） */
     private static int[] region(Bitmap bmp, JSONObject a) {
         int w = bmp.getWidth(), h = bmp.getHeight();
-        boolean p = a.optInt("pct", 0) == 1;
+        boolean p = pctOn(a);
         int x0 = a.optInt("rx", 0), y0 = a.optInt("ry", 0);
         int x1 = a.optInt("rw", 0), y1 = a.optInt("rh", 0);
         if (p) {

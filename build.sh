@@ -21,6 +21,11 @@ OUT="$ROOT/out"
 KS="$ROOT/lazytap.jks"
 PKG="com.lazytap.clicker"
 
+# 签名信息：仓库里带的是开发密钥，正式发布请换成自己的，用环境变量传进来（CI 里走 secrets）
+KS_ALIAS="${KS_ALIAS:-lazytap}"
+KS_PASS="${KS_PASS:-lazytap}"
+KEY_PASS="${KEY_PASS:-lazytap}"
+
 echo "==> 清理"
 rm -rf "$BUILD"
 mkdir -p "$BUILD/gen" "$BUILD/obj" "$BUILD/dex" "$OUT"
@@ -61,15 +66,16 @@ echo "==> 对齐"
 "$ZIPALIGN" -p -f 4 "$BUILD/unsigned.apk" "$BUILD/aligned.apk"
 
 if [ ! -f "$KS" ]; then
-  echo "==> 生成签名密钥"
-  keytool -genkeypair -v -keystore "$KS" -alias lazytap -keyalg RSA -keysize 2048 \
-    -validity 10950 -storepass lazytap -keypass lazytap \
+  echo "==> 没找到签名密钥，临时生成一个（$KS）"
+  echo "    注意：自己发布时请换成固定的密钥，否则换一次密钥，老版本就没法覆盖安装了"
+  keytool -genkeypair -v -keystore "$KS" -alias "$KS_ALIAS" -keyalg RSA -keysize 2048 \
+    -validity 10950 -storepass "$KS_PASS" -keypass "$KEY_PASS" \
     -dname "CN=LazyTap, OU=Dev, O=LazyTap, L=Shenzhen, ST=GD, CN=CN" >/dev/null
 fi
 
 echo "==> 签名"
-"$APKSIGNER" sign --ks "$KS" --ks-key-alias lazytap \
-  --ks-pass pass:lazytap --key-pass pass:lazytap \
+"$APKSIGNER" sign --ks "$KS" --ks-key-alias "$KS_ALIAS" \
+  --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" \
   --v2-signing-enabled true --v3-signing-enabled true \
   --out "$OUT/LazyTap-v$VER_NAME.apk" "$BUILD/aligned.apk"
 
