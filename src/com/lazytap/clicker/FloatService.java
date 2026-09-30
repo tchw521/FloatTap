@@ -204,7 +204,22 @@ public class FloatService extends Service {
         }
     }
 
+    /**
+     * 刷新悬浮球与录制条的显示。
+     * 脚本引擎的日志/状态回调是从它自己的线程（lazytap-run）发出来的，
+     * 而这里会 new View 并 add 到 WindowManager —— 在后台线程加了 View，
+     * 之后主线程 removeView 时会抛「Only the original thread that created a view hierarchy
+     * can touch its views」直接崩。所以不在主线程就扔回主线程再做。
+     */
     public void refresh() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            doRefresh();
+        } else {
+            h.post(this::doRefresh);
+        }
+    }
+
+    private void doRefresh() {
         if (ball != null) ball.invalidate();
         syncRecordBar();
     }

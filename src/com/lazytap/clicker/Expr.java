@@ -314,12 +314,18 @@ public final class Expr {
             switch (name) {
                 case "rand":
                     // rand() → 0..99；rand(10) → 0..9；rand(1,10) → 1..10（含两端）
-                    if (a.length >= 2 && a[1].num() > a[0].num()) {
-                        double lo = a[0].num(), hi = a[1].num();
+                    // 两个参数时按 min/max 归一：以前要求「第二个比第一个大」才走区间分支，
+                    // 于是 rand(5,5) 退化成 rand(5) 得 0..4、rand(10,5) 得 0..9，都是错的
+                    if (a.length >= 2) {
+                        double p0 = a[0].num(), p1 = a[1].num();
+                        double lo = Math.min(p0, p1), hi = Math.max(p0, p1);
                         return V.num((long) (lo + Math.random() * (hi - lo + 1)));
                     }
-                    double top = a.length >= 1 && a[0].num() != 0 ? a[0].num() : 100;
-                    return V.num((long) (Math.random() * top));
+                    if (a.length == 1) {
+                        double top = a[0].num();
+                        return V.num(top <= 0 ? 0 : (long) (Math.random() * top));
+                    }
+                    return V.num((long) (Math.random() * 100));
                 case "abs":
                     return V.num(Math.abs(a[0].num()));
                 case "min":

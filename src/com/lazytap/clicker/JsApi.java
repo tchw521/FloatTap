@@ -489,7 +489,18 @@ public final class JsApi {
 
     @JavascriptInterface
     public String toast(String msg) {
-        Toast.makeText(c, msg, Toast.LENGTH_SHORT).show();
+        // @JavascriptInterface 跑在 WebView 的 JavaBridge 线程上，那个线程没有 Looper，
+        // 直接 Toast 会抛 RuntimeException（不是 Exception，catch(Exception) 接不住），
+        // 异常会一路冒回 JS，让调用方的 Promise 直接失败。必须回主线程发。
+        try {
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                try {
+                    Toast.makeText(c, msg, Toast.LENGTH_SHORT).show();
+                } catch (Throwable ignored) {
+                }
+            });
+        } catch (Throwable ignored) {
+        }
         return "ok";
     }
 

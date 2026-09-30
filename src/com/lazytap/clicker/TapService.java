@@ -32,7 +32,8 @@ public class TapService extends AccessibilityService {
 
     private static volatile TapService instance;
     private int sw, sh;
-    private String topPkg = "";
+    // 无障碍回调线程写、脚本引擎线程读，不加 volatile 可能一直读到旧包名
+    private volatile String topPkg = "";
     private BroadcastReceiver sysRec;
 
     public static TapService get() {

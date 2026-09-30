@@ -54,6 +54,16 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
   }
+  /** 配色只认 1~6，别把脚本里带的数字原样拼进 class（导入的脚本可能夹带引号把标签撑开） */
+  function toneCls(t) {
+    var n = parseInt(t, 10);
+    return (n >= 1 && n <= 6) ? n : 1;
+  }
+  /** 图标同理：市场脚本和分享码里的 icon 是别人给的，一律转义后再拼 */
+  function iconOf(i) {
+    var s = String(i == null ? '' : i);
+    return s ? esc(s.slice(0, 8)) : '📜';
+  }
   var toastTimer;
   function toast(msg) {
     var t = $('#toast');
@@ -69,8 +79,12 @@
     return JSON.parse(JSON.stringify(v));
   }
   function num(v, d) { var n = parseFloat(v); return isNaN(n) ? d : n; }
-  /** 开关值：默认存布尔，但 pct 是例外——Java 端按数字读（历史脚本里也是 1/0），存布尔会被当成关 */
-  function swVal(k, on) { return k === 'pct' ? (on ? 1 : 0) : on; }
+  /**
+   * 开关值：默认存布尔，但 pct / rep 是例外——Java 端按数字读（历史脚本里也是 1/0），
+   * 存布尔会被 org.json 当成关。Java 那边现在是布尔数字都认（ScriptRunner#on），
+   * 这里也统一存 1/0，省得一份数据两种形态。
+   */
+  function swVal(k, on) { return (k === 'pct' || k === 'rep') ? (on ? 1 : 0) : on; }
 
   // ---------- 动作定义 ----------
   var TYPES = {
@@ -334,7 +348,7 @@
       var running = S.st.running && S.st.current === s.id;
       h += '<div class="item' + (running ? ' run' : '') + '" data-id="' + s.id + '">'
         + (q ? '' : '<div class="grip" data-drag="' + S.scripts.indexOf(s) + '" data-list="scripts">⋮⋮</div>')
-        + '<div class="ic g' + (s.tone || 1) + '" data-act="pickIcon" data-id="' + s.id + '">' + (s.icon || '📜') + '</div>'
+        + '<div class="ic g' + toneCls(s.tone) + '" data-act="pickIcon" data-id="' + s.id + '">' + iconOf(s.icon) + '</div>'
         + '<div class="grow" data-act="edit" data-id="' + s.id + '">'
         + '<div class="t">' + esc(s.name) + (s.kind === 'js' ? '<span class="chip">JS</span>' : '')
         + (s.loop ? '<span class="chip b">∞ 循环</span>' : '') + '</div>'
@@ -946,8 +960,8 @@
     var busy = !!(S.st && S.st.js);
     var h = '<div class="card"><div class="row">'
       + '<button class="btn sm ghost" data-act="back">‹ 返回</button>'
-      + '<div class="ic g' + (s.tone || 1) + '" data-act="pickIcon" data-id="' + s.id
-      + '" style="width:34px;height:34px;flex:0 0 34px;font-size:16px">' + (s.icon || '📜') + '</div>'
+      + '<div class="ic g' + toneCls(s.tone) + '" data-act="pickIcon" data-id="' + s.id
+      + '" style="width:34px;height:34px;flex:0 0 34px;font-size:16px">' + iconOf(s.icon) + '</div>'
       + '<div class="grow"><input id="sname" value="' + esc(s.name) + '" placeholder="脚本名"></div>'
       + '<button class="btn sm ok" data-act="save">保存</button></div>'
       + '<label class="f" style="margin-top:10px"><span>备注（给自己看的，可留空）</span>'
@@ -992,7 +1006,7 @@
     var acts = s.actions || [];
     var h = '<div class="card"><div class="row">'
       + '<button class="btn sm ghost" data-act="back">‹ 返回</button>'
-      + '<div class="ic g' + (s.tone || 1) + '" data-act="pickIcon" data-id="' + s.id + '" style="width:34px;height:34px;flex:0 0 34px;font-size:16px">' + (s.icon || '📜') + '</div>'
+      + '<div class="ic g' + toneCls(s.tone) + '" data-act="pickIcon" data-id="' + s.id + '" style="width:34px;height:34px;flex:0 0 34px;font-size:16px">' + iconOf(s.icon) + '</div>'
       + '<div class="grow"><input id="sname" value="' + esc(s.name) + '" placeholder="脚本名"></div>'
       + '<button class="btn sm ok" data-act="save">保存</button></div>'
       + '<label class="f" style="margin-top:10px"><span>备注（给自己看的，可留空）</span>'
@@ -1497,7 +1511,8 @@
       if (sv) sv.textContent = '取到颜色 ' + c;
       var field = S.pick && S.pick.field;
       // 从条件子页发起的取色，得回到条件子页而不是动作主表单
-      sheet(S.pick && S.pick.sub ? sheetCondEdit(S.pick.sub) : sheetEditAct(S.editAct));
+      // sub 是条件序号，第一个条件是 0 —— 这里必须用 != null，写成 S.pick.sub 的话 0 是假值会跳回主表单
+      sheet(S.pick && S.pick.sub != null ? sheetCondEdit(S.pick.sub) : sheetEditAct(S.editAct));
       var inp = fieldEl(field);
       if (inp) inp.value = c;
       var sw = document.querySelector('#sheet [data-swatch="' + field + '"]');

@@ -33,10 +33,13 @@ public class C {
 
     static void log(String s) { logs.add(s); }
 
-    /** 被测：百分比开关（从 ScriptRunner 原样搬来） */
+    /** 被测：开关的兼容读法（从 ScriptRunner 原样搬来）—— pct 和 rep 都靠它 */
+    static boolean on(JSONObject a, String k) {
+        return a != null && (a.optBoolean(k, false) || a.optInt(k, 0) == 1);
+    }
+
     static boolean pctOn(JSONObject a) {
-        if (a == null) return false;
-        return a.optBoolean("pct", false) || a.optInt("pct", 0) == 1;
+        return on(a, "pct");
     }
 
     /** 被测：多条件判断 */
@@ -444,6 +447,19 @@ public class C {
         // 反面证据：单用 optBoolean 会漏掉数字形态
         boolean oldWay2 = pNum.optBoolean("pct", false);
         t("单用 optBoolean 会漏掉数字 1（所以不能只改一半）", !oldWay2);
+
+        // 「重复检查」开关 rep 是同一类问题的第三处：界面存布尔，引擎按数字读
+        JSONObject rBool = act(0, cs(cond("always", null, null)), 5, 9);
+        rBool.put("rep", true); rBool.put("repGap", 60); rBool.put("repMax", 2);
+        JSONObject rNum = act(0, cs(cond("always", null, null)), 5, 9);
+        rNum.put("rep", 1); rNum.put("repGap", 60); rNum.put("repMax", 2);
+        t("rep 存布尔时能读出「开」", on(rBool, "rep"));
+        t("rep 存数字 1 时能读出「开」", on(rNum, "rep"));
+        JSONObject rOff = act(0, cs(cond("always", null, null)), 5, 9);
+        rOff.put("rep", false);
+        t("rep 存布尔 false 时是「关」", !on(rOff, "rep"));
+        // 反面证据：单用 optInt 读不到布尔 true —— 这就是 rep 之前一直不生效的原因
+        t("旧写法 optInt 读不到布尔 true（rep 失效的原因）", rBool.optInt("rep", 0) != 1);
 
         System.out.println("\n===== 通过 " + pass + " / 失败 " + fail + " =====");
         if (fail > 0) System.exit(1);

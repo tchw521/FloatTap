@@ -8,6 +8,9 @@ import android.graphics.Bitmap;
  */
 public final class Img {
 
+    /** 找图时单个像素的容差：隔了缩放和压缩，指望每个像素都一样不现实 */
+    private static final int PIXEL_SIM = 65;
+
     private Img() {
     }
 
@@ -103,7 +106,7 @@ public final class Img {
         int stride = Math.max(1, Math.max(maxLx - x0 / f, maxLy - y0 / f) / 160);
         for (int ly = y0 / f; ly <= maxLy; ly += stride) {
             for (int lx = x0 / f; lx <= maxLx; lx += stride) {
-                float m = ratio(bl, lw, lx, ly, sl, lsw, lsh, sim, 2);
+                float m = ratio(bl, lw, lx, ly, sl, lsw, lsh, PIXEL_SIM, 2);
                 if (m > bs) { bs = m; bx = lx * f; by = ly * f; }
             }
         }
@@ -114,14 +117,14 @@ public final class Img {
         int r = f * 2;
         for (int y = Math.max(y0, by - r); y <= Math.min(y1 - sh, by + r); y += 2) {
             for (int x = Math.max(x0, bx - r); x <= Math.min(x1 - sw, bx + r); x += 2) {
-                float m = ratio(bp, bw, x, y, sp, sw, sh, sim, 2);
+                float m = ratio(bp, bw, x, y, sp, sw, sh, PIXEL_SIM, 2);
                 if (m > best) { best = m; rx = x; ry = y; }
             }
         }
         // 第三层：在第二层最优解 ±3 像素里按 1 像素步长定准
         for (int y = Math.max(y0, ry - 3); y <= Math.min(y1 - sh, ry + 3); y++) {
             for (int x = Math.max(x0, rx - 3); x <= Math.min(x1 - sw, rx + 3); x++) {
-                float m = ratio(bp, bw, x, y, sp, sw, sh, sim, 2);
+                float m = ratio(bp, bw, x, y, sp, sw, sh, PIXEL_SIM, 2);
                 if (m > best) { best = m; rx = x; ry = y; }
             }
         }
@@ -130,16 +133,21 @@ public final class Img {
         return new int[]{rx + sw / 2, ry + sh / 2, Math.round(best * 100)};
     }
 
-    /** 达标像素比例 0~1：采样步长为 step，比较 small 的每个采样点 */
+    /**
+     * 达标像素比例 0~1：采样步长为 step，比较 small 的每个采样点。
+     * 注意 pixelSim 是「单个像素允许差多少」的容差，跟 findImage 的 sim（整体要多大比例达标）
+     * 是两回事——把 sim 同时当这两个门槛用的话，填 90 就要求每个点都几乎一模一样且 90% 达标，
+     * 结果就是永远找不到。
+     */
     private static float ratio(int[] big, int bw, int bx, int by,
-                               int[] small, int sw, int sh, int sim, int step) {
+                               int[] small, int sw, int sh, int pixelSim, int step) {
         int hit = 0, tot = 0;
         for (int j = 0; j < sh; j += step) {
             int bi = (by + j) * bw + bx;
             int si = j * sw;
             for (int i = 0; i < sw; i += step) {
                 tot++;
-                if (colorSim(big[bi + i], small[si + i]) >= sim) hit++;
+                if (colorSim(big[bi + i], small[si + i]) >= pixelSim) hit++;
             }
         }
         return tot == 0 ? 0 : (float) hit / tot;

@@ -16,6 +16,7 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 脚本执行引擎：串行、可中断、零反射。
@@ -33,7 +34,10 @@ public final class ScriptRunner {
     private final HandlerThread thread = new HandlerThread("lazytap-run");
     private Handler h;
     private final Random rnd = new Random();
-    private final List<String> logs = new ArrayList<>();
+    // 引擎线程在写（log），界面/WebView 桥线程在读（JsApi 拼状态 JSON）——
+    // 用并发容器，否则遍历时增删会 ConcurrentModificationException，
+    // 异常被上层吞掉后整个状态面板会缺一块
+    private final List<String> logs = new CopyOnWriteArrayList<>();
 
     private volatile boolean running;
     private volatile String currentId = "";
@@ -150,6 +154,10 @@ public final class ScriptRunner {
         if (h != null) h.removeCallbacksAndMessages(null);
         if (listener != null && !currentId.isEmpty()) status("stopped", "");
         currentId = "";
+        // 截图缓存别跨脚本留着：那是一整张屏幕的 Bitmap（十几 MB），
+        // 这里只丢引用不 recycle —— 它可能正是 Capture.last()，界面预览还在用
+        shotBmp = null;
+        shotAt = 0;
     }
 
     private float speed() {
@@ -212,7 +220,10 @@ public final class ScriptRunner {
             h.postDelayed(this::step, Math.max(50, (long) (300 * speed())));
             return;
         }
-        if (jump > 0) index = jump - 1;  // 跳到第 N 步（1 起）
+        if (jump > 0) {
+            index = jump - 1;            // 跳到第 N 步（1 起）
+            repeatLeft = 0;              // 跳走就把上一步没做完的重复次数清掉，否则目标步会被莫名重复
+        }
         if (index < 0) index = 0;
         h.postDelayed(this::step, Math.max(16, wait));
     }
@@ -443,7 +454,8 @@ public final class ScriptRunner {
             log("条件列表是空的，当成成立（不然脚本会永远卡在这）");
             return jump(a, true);
         }
-        boolean repeat = a.optInt("rep", 0) == 1;
+        // 又是「界面存布尔、引擎按数字读」那一类：换成跟 pct 一样的兼容读法
+        boolean repeat = on(a, "rep");
         // 间隔夹在 50ms~20s：太小会把 CPU 打满，太大就变成「点了停止却停不下来」
         long gap = Math.min(C_MAX_MS, Math.max(50, a.optLong("repGap", 800)));
         int max = Math.max(1, Math.min(a.optInt("repMax", 1), C_MAX_ROUND));
@@ -460,11 +472,22 @@ public final class ScriptRunner {
             hit = r[0] == 1;
             if (hit || !repeat || round >= max) break;
             log("条件没成，等 " + gap + "ms 再试（第 " + round + "/" + max + " 次）");
-            try {
-                Thread.sleep(gap);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+            // 切成小片睡：一觉睡满 gap（最长 20 秒）的话，这期间点「停止」要等这一觉睡完才响应，
+            // 用户会觉得卡死了。每 100ms 醒一次看有没有被叫停。
+            long left = gap;
+            while (left > 0) {
+                if (!running) {
+                    log("已经停了，条件检查中断");
+                    return 0;
+                }
+                long slice = Math.min(100, left);
+                try {
+                    Thread.sleep(slice);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return 0;
+                }
+                left -= slice;
             }
         }
         if (!running) {
@@ -566,8 +589,18 @@ public final class ScriptRunner {
     private Bitmap shotCached(TapService svc, JSONObject c) {
         long now = System.currentTimeMillis();
         if (shotBmp == null || now - shotAt > 1500) {
+            Bitmap old = shotBmp;
             shotBmp = Capture.shot(svc, 1500);
             shotAt = now;
+            // 整屏 Bitmap 一张就是十几 MB，循环脚本里每 1.5 秒换一张，不回收迟早 OOM。
+            // 只回收「已经不是 Capture 当前那张」的旧图：那说明它被换下来了，
+            // 界面预览和 JS API 用的都是 Capture.last()（新图），不会碰到它。
+            if (old != null && old != shotBmp && old != Capture.last()) {
+                try {
+                    old.recycle();
+                } catch (Throwable ignored) {
+                }
+            }
         }
         return shotBmp;
     }
@@ -666,13 +699,18 @@ public final class ScriptRunner {
     }
 
     /**
-     * 坐标是不是按百分比算。
-     * 这个字段存过两种形态：UI 开关以前写布尔 true，内置脚本和分享码里写数字 1。
-     * org.json 对布尔求 optInt 会抛异常并回落 0（等于百分比静默失效），所以两种都得认。
+     * 读一个开关字段：布尔和数字 1 都算开。
+     * 界面开关写的是布尔，但内置脚本、分享码、手改过的 JSON 里可能是数字 1。
+     * org.json 对布尔求 optInt、对数字求 optBoolean 都会抛异常并回落默认值，
+     * 只认一种就会把「开」读成「关」——pct（百分比坐标）和 rep（重复检查）都栽在这上面。
      */
+    private static boolean on(JSONObject a, String k) {
+        return a != null && (a.optBoolean(k, false) || a.optInt(k, 0) == 1);
+    }
+
+    /** 坐标是不是按百分比算 */
     private static boolean pctOn(JSONObject a) {
-        if (a == null) return false;
-        return a.optBoolean("pct", false) || a.optInt("pct", 0) == 1;
+        return on(a, "pct");
     }
 
     /** 动作里的区域字段（支持百分比） */
