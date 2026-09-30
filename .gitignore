@@ -1,0 +1,11 @@
+# 构建产物（可随时用 ./build.sh 重新生成）
+build/
+
+# 本地 SDK 路径等
+local.properties
+*.iml
+.idea/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db

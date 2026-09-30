@@ -12,7 +12,11 @@
     prefs: {},
     editId: null,     // 正在编辑的脚本 id
     editAct: -1,      // 正在编辑的动作下标
-    q: ''             // 脚本搜索词
+    q: '',            // 脚本搜索词
+    cap: {},          // 截图/图色状态
+    shot: '',         // 最新截图 dataURL
+    shotImg: null,    // 截图的 Image 对象
+    pick: null        // 取色/取图临时状态
   };
 
   // ---------- 原生桥 ----------
@@ -69,7 +73,10 @@
     find: { n: '找文字', e: '🔍', f: [['s', '屏幕上的文字'], ['click', '找到就点它', 'switch'], ['contains', '模糊匹配', 'switch'], ['timeout', '最多等 ms'], ['index', '第几个(1起)'], ['d', '之后等待 ms']], def: { click: true, contains: true, timeout: 3000, index: 1, d: 300 } },
     if: { n: '如果', e: '🔀', f: [['m', '判断什么', 'sel:ifmode'], ['s', '屏幕上的文字'], ['p', '应用包名（判断 App 时用）'], ['contains', '模糊匹配', 'switch'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { m: 'text', s: '', p: '', contains: true, go: 0, els: 0, d: 100 } },
     count: { n: '计数', e: '🔢', f: [['k', '计数器名字'], ['mode', '动作', 'sel:cntmode'], ['v', '每次加多少'], ['times', '涨到几次就跳（0=不管）'], ['go', '跳到第几步'], ['resetAfter', '跳完就清零', 'switch'], ['d', '之后等待 ms']], def: { k: 'main', mode: 'add', v: 1, times: 0, go: 0, resetAfter: true, d: 100 } },
-    multi: { n: '多指', e: '🖐', c: 1, f: [['m', '手势', 'sel:multi'], ['x', '中心 X'], ['y', '中心 Y'], ['r', '两指间距半径'], ['ms', '动作时长 ms'], ['d', '之后等待 ms']], def: { m: 'twoTap', x: 50, y: 50, r: 80, ms: 400, d: 400 } }
+    multi: { n: '多指', e: '🖐', c: 1, f: [['m', '手势', 'sel:multi'], ['x', '中心 X'], ['y', '中心 Y'], ['r', '两指间距半径'], ['ms', '动作时长 ms'], ['d', '之后等待 ms']], def: { m: 'twoTap', x: 50, y: 50, r: 80, ms: 400, d: 400 } },
+    findColor: { n: '找色', e: '🎨', c: 1, f: [['c', '目标颜色', 'color'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { c: '#FF6B35', sim: 95, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300 }, pct: ['rx', 'ry', 'rw', 'rh'] },
+    cmpColor: { n: '比色', e: '🌈', f: [['x', 'X 坐标'], ['y', 'Y 坐标'], ['c', '期望颜色', 'color'], ['sim', '相似度 %'], ['go', '颜色对 → 跳到第几步'], ['els', '不对 → 跳到第几步'], ['d', '之后等待 ms']], def: { x: 50, y: 50, c: '#FFFFFF', sim: 95, go: 0, els: 0, d: 200 } },
+    findImage: { n: '找图', e: '🖼', c: 1, f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300 }, pct: ['rx', 'ry', 'rw', 'rh'] }
   };
   var KEYS = ['back:返回', 'home:桌面', 'recents:最近任务', 'notif:通知栏', 'quick:快捷设置', 'lock:锁屏', 'power:电源菜单', 'split:分屏'];
   var OPTS = {
@@ -109,6 +116,12 @@
       case 'count': return '计数 ' + (a.k || 'main') + (a.mode === 'reset' ? ' 清零' : ' +' + (a.v || 1))
         + (a.times ? '，够 ' + a.times + ' 次跳' + jumpTxt(a.go) : '');
       case 'multi': return (MULTI_N[a.m] || a.m) + ' @' + p + ' (' + a.x + ',' + a.y + ')';
+      case 'findColor': return '找 ' + (a.c || '') + ' 像≥' + (a.sim || 95) + '%'
+        + (a.click ? ' 并点击' : '') + '，找到跳' + jumpTxt(a.go) + ' / 没找到跳' + jumpTxt(a.els);
+      case 'cmpColor': return '比 (' + a.x + ',' + a.y + ')=' + (a.c || '') + ' ≥' + (a.sim || 95)
+        + '%，对跳' + jumpTxt(a.go) + ' / 不对跳' + jumpTxt(a.els);
+      case 'findImage': return '找图「' + (a.tpl || '未选') + '」像≥' + (a.sim || 90) + '%'
+        + (a.click ? ' 并点击' : '') + '，找到跳' + jumpTxt(a.go) + ' / 没找到跳' + jumpTxt(a.els);
     }
     return '';
   }
@@ -123,6 +136,7 @@
     var st = jcall('status'); if (st) S.st = st;
     var p = jcall('prefs'); if (p) S.prefs = p;
     var t = jcall('triggers'); if (t) S.triggers = t;
+    loadCap();
     loadRec();          // 回到前台时把录制结果一起拉回来，不然会显示“还没录到”
     applyTheme();
     render();
@@ -515,6 +529,15 @@
     }
     h += '</div><div class="tiny" style="margin-top:8px">换主色，界面和悬浮球一起变。</div></div>';
 
+    var cap = S.cap || {};
+    h += '<div class="card"><div class="sec">图色识别（找色 / 比色 / 找图）</div>'
+      + '<div class="kv"><span>截屏授权</span><span class="tiny">'
+      + (cap.granted ? (cap.running ? '✅ 已授权，截屏中' : '✅ 已授权') : '❌ 未授权') + '</span></div>'
+      + '<div class="row" style="margin-top:8px">'
+      + '<button class="btn sm ' + (cap.granted ? 'ghost' : 'ok') + ' grow" data-act="reqCap">' + (cap.granted ? '重新授权' : '去授权截屏') + '</button>'
+      + '<button class="btn sm ghost grow" data-act="goTpl">🖼 模板图</button></div>'
+      + '<div class="tiny" style="margin-top:6px">授权后才能在屏幕上找颜色、找图片。找色和找图都不依赖界面节点，游戏里也能用。</div></div>';
+
     h += '<div class="card"><div class="sec">自动化</div>'
       + '<div class="muted">到点 / 周期 / 通知 / 插电 / 解锁自动跑脚本，在「⚡ 自动」页里配。</div>'
       + '<button class="btn wide ghost" style="margin-top:10px" data-act="goTrig">⚡ 去配触发器</button></div>';
@@ -699,12 +722,31 @@
   function sheetEditAct(i) {
     var s = findScript(S.editId);
     var a = s.actions[i];
-    var t = TYPES[a.t];
+    if (!a) { closeSheet(); return ''; }
+    S.editAct = i;
+    var t = TYPES[a.t] || { n: a.t, e: '❔', f: [] };
     var h = '<h3>' + t.e + ' ' + t.n + '</h3>';
     for (var j = 0; j < t.f.length; j++) {
       var key = t.f[j][0], label = t.f[j][1], kind = t.f[j][2];
       if (kind === 'switch') {
         h += '<div class="kv"><span>' + label + '</span>' + '<div class="switch ' + (a[key] ? 'on' : '') + '" data-field="' + key + '"><i></i></div></div>';
+      } else if (kind === 'color') {
+        h += '<label class="f"><span>' + label + '</span>'
+          + '<span class="row" style="gap:8px"><span class="swatch" style="background:' + esc(a[key] || '#000') + '" data-swatch="' + key + '"></span>'
+          + '<input data-field="' + key + '" type="text" value="' + esc(a[key] == null ? '' : a[key]) + '" class="grow"></span></label>'
+          + '<button class="btn ghost wide" style="margin:0 0 4px" data-act="pickColor" data-field-for="' + key + '">🎨 截图取色</button>';
+      } else if (kind && kind.indexOf('sel:') === 0) {
+        var optKey = kind.slice(4);
+        var opts = OPTS[optKey] || [];
+        h += '<label class="f"><span>' + label + '</span><select data-field="' + key + '">';
+        for (var z = 0; z < opts.length; z++) {
+          h += '<option value="' + esc(opts[z][0]) + '"' + (String(a[key]) === String(opts[z][0]) ? ' selected' : '') + '>' + esc(opts[z][1]) + '</option>';
+        }
+        h += '</select></label>';
+        if (optKey === 'tpls') {
+          if (!opts.length) h += '<div class="tiny" style="margin:-4px 0 6px">还没有模板图，先去「设置 → 图色模板」截一张存起来。</div>';
+          else h += '<button class="btn ghost wide" style="margin:0 0 4px" data-act="goTpl">🖼 管理模板图</button>';
+        }
       } else if (kind === 'key') {
         h += '<label class="f"><span>' + label + '</span><select data-field="' + key + '">';
         for (var q = 0; q < KEYS.length; q++) {
@@ -740,6 +782,7 @@
     var st = S.st || {}, sc = (st.screen || {});
     var w = sc.w || 1080, hgt = sc.h || 1920;
     return '<h3>🎯 点一下屏幕图取坐标</h3>'
+      + (S.shot ? '' : '<div class="tiny" style="margin-bottom:6px">没有截图，显示的是空白网格；想对着真实画面取点，先去「设置」授权截屏。</div>')
       + '<div class="pick"><canvas id="cv" width="' + w + '" height="' + hgt + '"></canvas></div>'
       + '<div class="row" style="margin-top:10px"><div class="grow muted" id="pv">还没取点</div></div>'
       + '<div class="row" style="margin-top:8px">'
@@ -753,7 +796,8 @@
     if (!cv) return;
     var ctx = cv.getContext('2d');
     var draw = function (x, y) {
-      ctx.fillStyle = '#111'; ctx.fillRect(0, 0, cv.width, cv.height);
+      if (S.shotImg && S.shotImg.complete) { ctx.drawImage(S.shotImg, 0, 0, cv.width, cv.height); }
+      else { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, cv.width, cv.height); }
       ctx.strokeStyle = '#ff6b35'; ctx.lineWidth = 3;
       ctx.strokeRect(6, 6, cv.width - 12, cv.height - 12);
       if (x != null) {
@@ -764,12 +808,14 @@
       }
     };
     draw(null);
+    window.__redrawPick = function () { var p = window.__picked; if (p) draw(p.x, p.y); else draw(null); };
     cv.onclick = function (e) {
       var r = cv.getBoundingClientRect();
       picked = {
         x: Math.round((e.clientX - r.left) / r.width * cv.width),
         y: Math.round((e.clientY - r.top) / r.height * cv.height)
       };
+      window.__picked = picked;
       draw(picked.x, picked.y);
       document.getElementById('pv').textContent = '选中：' + picked.x + ' , ' + picked.y;
     };
@@ -837,8 +883,96 @@
     render();
   }
 
+  // ---------- 截图取色 / 取图 ----------
+  function shotPanel(mode) {
+    var st = S.st || {}, sc = st.screen || {};
+    return '<h3>' + (mode === 'tpl' ? '🖼 框一块区域存成模板图' : '🎨 点一下取这个点的颜色') + '</h3>'
+      + (S.shot ? '' : '<div class="tiny">还没拿到截图</div>')
+      + '<div class="pick"><canvas id="sc" width="' + (sc.w || 1080) + '" height="' + (sc.h || 1920) + '"></canvas></div>'
+      + '<div class="row" style="margin-top:8px"><div class="grow muted" id="sv">'
+      + (mode === 'tpl' ? '点第一下定左上角，再点一下定右下角' : '还没取色') + '</div></div>'
+      + '<div class="row" style="margin-top:8px">'
+      + '<button class="btn ghost grow" data-act="shotRefresh">重新截图</button>'
+      + '<button class="btn ghost grow" data-act="cancelAct">关闭</button></div>';
+  }
+
+  function bindShotCanvas(mode) {
+    var cv = document.getElementById('sc');
+    if (!cv) return;
+    var ctx = cv.getContext('2d');
+    var rect = null;
+    var draw = function () {
+      if (S.shotImg && S.shotImg.complete) ctx.drawImage(S.shotImg, 0, 0, cv.width, cv.height);
+      else { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, cv.width, cv.height); }
+      if (rect) {
+        ctx.strokeStyle = '#2ecc71'; ctx.lineWidth = 3;
+        ctx.strokeRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
+      }
+    };
+    draw();
+    window.__redrawShot = draw;
+    cv.onclick = function (e) {
+      var r = cv.getBoundingClientRect();
+      var x = Math.round((e.clientX - r.left) / r.width * cv.width);
+      var y = Math.round((e.clientY - r.top) / r.height * cv.height);
+      if (mode === 'tpl') {
+        if (!rect || (rect.x1 != null)) { rect = { x0: x, y0: y, x1: null, y1: null }; }
+        else { rect.x1 = x; rect.y1 = y; }
+        draw();
+        if (rect.x1 != null) {
+          var w = rect.x1 - rect.x0, h2 = rect.y1 - rect.y0;
+          if (w > 4 && h2 > 4) {
+            S.pick = { x: rect.x0, y: rect.y0, w: w, h: h2 };
+            sheet(sheetTplSave());
+          } else { toast('框太小了，再来一次'); rect = null; draw(); }
+        }
+        return;
+      }
+      var c = call('colorAt', x + ',' + y);
+      if (typeof c === 'string' && c.indexOf('err:') === 0) { toast(c.slice(4)); return; }
+      var sv = document.getElementById('sv');
+      if (sv) sv.textContent = '取到颜色 ' + c;
+      var field = S.pick && S.pick.field;
+      sheet(sheetEditAct(S.editAct));
+      var inp = document.querySelector('#sheet [data-field="' + field + '"]');
+      if (inp) inp.value = c;
+      var sw = document.querySelector('#sheet [data-swatch="' + field + '"]');
+      if (sw) sw.style.background = c;
+      toast('已填入 ' + c + '，记得点保存');
+    };
+  }
+
+  function sheetTplSave() {
+    var p = S.pick || {};
+    return '<h3>存成模板图</h3>'
+      + '<label class="f"><span>名字</span><input id="tplName" type="text" placeholder="比如 跳过按钮"></label>'
+      + '<div class="tiny">区域：' + p.x + ',' + p.y + ' 尺寸 ' + p.w + '×' + p.h + '</div>'
+      + '<div class="row" style="margin-top:12px">'
+      + '<button class="btn ghost grow" data-act="cancelAct">取消</button>'
+      + '<button class="btn ok grow" data-act="tplSaveGo">保存</button></div>';
+  }
+
+  function viewTpls() {
+    var names = (S.cap && S.cap.tpls) || [];
+    var h = '<div class="card"><div class="sec">图色模板</div>';
+    if (!names.length) {
+      h += '<div class="muted">还没有模板图。去截图框一块区域存下来，「找图」动作就能认它了。</div>';
+    } else {
+      for (var i = 0; i < names.length; i++) {
+        h += '<div class="kv"><span>🖼 ' + esc(names[i]) + '</span>'
+          + '<button class="btn sm ghost" data-act="tplDel" data-v="' + esc(names[i]) + '">删除</button></div>';
+      }
+    }
+    h += '<button class="btn wide ok" style="margin-top:10px" data-act="pickTpl">' + (S.cap && S.cap.granted ? '📷 截图框一块存模板' : '🔑 先授权截屏') + '</button>';
+    return h + '<button class="btn ghost wide" style="margin-top:9px" data-act="cancelAct">关闭</button></div>';
+  }
+
   // ---------- 事件 ----------
   document.addEventListener('click', function (e) {
+    // 点遮罩空白处收起弹层
+    if (e.target && e.target.id === 'modal') {
+      S.editAct = null; S.pick = null; closeSheet(); return;
+    }
     var el = e.target.closest('[data-act],[data-toggle],.switch,#tabs button');
     if (!el) return;
     var act = el.dataset.act;
@@ -944,7 +1078,7 @@
         s = findScript(S.editId); s.actions.splice(+el.dataset.i, 1); saveScripts(); render();
         break;
       case 'saveAct': saveAct(+el.dataset.i); break;
-      case 'cancelAct': closeSheet(); break;
+      case 'cancelAct': S.editAct = null; S.pick = null; closeSheet(); break;
       case 'pickPoint': picked = null; sheet(sheetPickPoint(+el.dataset.i)); bindCanvas(); break;
       case 'usePoint':
         if (!picked) { toast('先在图上点一下'); return; }
@@ -976,6 +1110,29 @@
         loadRec();
         break;
       case 'recSave': saveRecAsScript(); break;
+      case 'reqCap': ok(call('reqCap')); break;
+      case 'capStop': ok(call('capStop')); setTimeout(refreshAll, 300); break;
+      case 'shotRefresh': if (loadShot()) { sheet(shotPanel(S.pick && S.pick.mode)); bindShotCanvas(S.pick && S.pick.mode); } break;
+      case 'pickColor':
+        S.pick = { field: el.dataset.fieldFor, mode: 'color' };
+        if (!S.shot && !loadShot()) break;
+        sheet(shotPanel('color')); bindShotCanvas('color');
+        break;
+      case 'pickTpl':
+        S.pick = { mode: 'tpl' };
+        if (!loadShot()) break;
+        sheet(shotPanel('tpl')); bindShotCanvas('tpl');
+        break;
+      case 'goTpl': sheet(viewTpls()); break;
+      case 'tplSaveGo':
+        var nm = (document.getElementById('tplName') || {}).value || '';
+        nm = nm.trim();
+        if (!nm) { toast('起个名字'); break; }
+        var pr = S.pick || {};
+        ok(call('saveTpl', JSON.stringify({ name: nm, x: pr.x, y: pr.y, w: pr.w, h: pr.h })));
+        closeSheet(); refreshAll(); sheet(viewTpls());
+        break;
+      case 'tplDel': ok(call('delTpl', el.dataset.v)); refreshAll(); sheet(viewTpls()); break;
       case 'logRefresh': refreshAll(); break;
       case 'mode':
         ok(call('savePrefs', JSON.stringify({ mode: el.dataset.v })));
@@ -1129,6 +1286,31 @@
       + '<button class="btn ok grow" data-act="doImportGo">导入</button></div>');
   }
 
+  function loadCap() {
+    var c = jcall('capStatus');
+    if (!c) return;
+    S.cap = c;
+    OPTS.tpls = (c.tpls || []).map(function (n) { return [n, n]; });
+    if (!OPTS.tpls.length) OPTS.tpls = [['', '（还没有模板图）']];
+  }
+
+  function loadShot() {
+    var r = call('shot');
+    if (typeof r === 'string' && r.indexOf('data:image') === 0) {
+      S.shot = r;
+      S.shotImg = new Image();
+      S.shotImg.src = r;
+      // 解码完把弹层里的画布补画一次
+      S.shotImg.onload = function () {
+        if (window.__redrawShot) window.__redrawShot();
+        if (window.__redrawPick) window.__redrawPick();
+      };
+      return true;
+    }
+    ok(r);
+    return false;
+  }
+
   function loadRec() {
     var r = jcall('recording');
     S.rec = r || [];
@@ -1156,6 +1338,7 @@
     else if (type === 'record') loadRec();
     else if (type === 'status' || type === 'resume') refreshAll();
     else if (type === 'scripts') refreshAll();
+    else if (type === 'cap') { refreshAll(); toast(data === 'ok' ? '截屏已授权' : '没拿到截屏授权'); }
   };
 
   // ---------- 启动 ----------

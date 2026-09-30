@@ -2,6 +2,7 @@ package com.lazytap.clicker;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.graphics.Bitmap;
 import android.graphics.Path;
 import android.graphics.Rect;
 import android.os.Bundle;
@@ -45,6 +46,8 @@ public final class ScriptRunner {
     private Listener listener;
     private long loopStart;
     private final java.util.HashMap<String, Integer> counters = new java.util.HashMap<>();
+    /** 最近一次图色命中的坐标，形如 "x,y"，供后续动作引用 */
+    private final java.util.HashMap<String, String> hits = new java.util.HashMap<>();
 
     ScriptRunner() {
         thread.start();
@@ -215,6 +218,12 @@ public final class ScriptRunner {
                 return execIf(svc, a);
             case "count":
                 return execCount(a);
+            case "cmpColor":
+                return execCmpColor(svc, a);
+            case "findColor":
+                return execFindColor(svc, a);
+            case "findImage":
+                return execFindImage(svc, a);
             case "multi": {
                 String mode = a.optString("m", "twoTap");
                 float cx = (float) a.optDouble("x", 0);
@@ -389,6 +398,102 @@ public final class ScriptRunner {
         if (go == -1) go = JUMP_END;
         else if (go == -2) go = JUMP_LOOP;
         return go;
+    }
+
+    // ---------- 图色识别 ----------
+
+    /** 比色：某一点是不是目标颜色，是走 go，否则走 els */
+    private int execCmpColor(TapService svc, JSONObject a) {
+        Bitmap bmp = Capture.shot(svc, 1500);
+        if (bmp == null) {
+            log("没截到屏，比色跳过");
+            return a.optInt("els", 0) == -1 ? JUMP_END : a.optInt("els", 0);
+        }
+        int x = a.optInt("x", 0), y = a.optInt("y", 0);
+        if (a.optInt("pct", 0) == 1) {
+            x = (int) (x / 100f * bmp.getWidth());
+            y = (int) (y / 100f * bmp.getHeight());
+        }
+        int color = Img.parseColor(a.optString("c", "#000000"));
+        int sim = a.optInt("sim", 95);
+        boolean hit = Img.cmpColor(bmp, x, y, color, sim);
+        log("比色 (" + x + "," + y + ") " + a.optString("c", "") + (hit ? " ✓像" : " ✗不像"));
+        return jump(a, hit);
+    }
+
+    /** 找色：在区域里找目标颜色，找到记下坐标（可选点击） */
+    private int execFindColor(TapService svc, JSONObject a) {
+        Bitmap bmp = Capture.shot(svc, 1500);
+        if (bmp == null) {
+            log("没截到屏，找色跳过");
+            return jump(a, false);
+        }
+        int color = Img.parseColor(a.optString("c", "#000000"));
+        int sim = a.optInt("sim", 95);
+        int[] r = region(bmp, a);
+        int[] hit = Img.findColor(bmp, color, sim, r[0], r[1], r[2], r[3], a.optInt("step", 2));
+        if (hit != null) {
+            log("找到颜色 @(" + hit[0] + "," + hit[1] + ") 像 " + hit[2] + "%");
+            hits.put("color", hit[0] + "," + hit[1]);
+            if (a.optBoolean("click", true)) svc.tap(hit[0], hit[1], 60);
+            return jump(a, true);
+        }
+        log("没找到颜色 " + a.optString("c", ""));
+        return jump(a, false);
+    }
+
+    /** 找图：在当前屏幕里找模板图，找到点击中心 */
+    private int execFindImage(TapService svc, JSONObject a) {
+        Bitmap bmp = Capture.shot(svc, 1500);
+        if (bmp == null) {
+            log("没截到屏，找图跳过");
+            return jump(a, false);
+        }
+        String name = a.optString("tpl", "");
+        Bitmap tpl = TplStore.get(name);
+        if (tpl == null) {
+            log("没有模板图「" + name + "」，先去截图存一张");
+            return jump(a, false);
+        }
+        int sim = a.optInt("sim", 90);
+        int[] r = region(bmp, a);
+        int[] hit = Img.findImage(bmp, tpl, sim, r[0], r[1], r[2], r[3]);
+        if (hit != null) {
+            log("找到图「" + name + "」@(" + hit[0] + "," + hit[1] + ") 像 " + hit[2] + "%");
+            hits.put("image", hit[0] + "," + hit[1]);
+            if (a.optBoolean("click", true)) svc.tap(hit[0], hit[1], 60);
+            return jump(a, true);
+        }
+        log("没找到图「" + name + "」");
+        return jump(a, false);
+    }
+
+    /** 动作里的区域字段（支持百分比） */
+    private static int[] region(Bitmap bmp, JSONObject a) {
+        int w = bmp.getWidth(), h = bmp.getHeight();
+        boolean p = a.optInt("pct", 0) == 1;
+        int x0 = a.optInt("rx", 0), y0 = a.optInt("ry", 0);
+        int x1 = a.optInt("rw", 0), y1 = a.optInt("rh", 0);
+        if (p) {
+            x0 = (int) (x0 / 100f * w);
+            y0 = (int) (y0 / 100f * h);
+            x1 = (int) (x1 / 100f * w);
+            y1 = (int) (y1 / 100f * h);
+        } else {
+            x1 = x0 + x1;
+            y1 = y0 + y1; // 非百分比时 rw/rh 是宽高
+        }
+        if (x1 <= 0) x1 = w - 1;
+        if (y1 <= 0) y1 = h - 1;
+        return new int[]{x0, y0, x1, y1};
+    }
+
+    /** 命中走 go，没命中走 els，语义与“如果”一致 */
+    private static int jump(JSONObject a, boolean hit) {
+        int v = hit ? a.optInt("go", 0) : a.optInt("els", 0);
+        if (v == -1) return JUMP_END;
+        if (v == -2) return JUMP_LOOP;
+        return v;
     }
 
     /** 计数器：加一 / 重置，达到次数就跳步或收工 */

@@ -70,6 +70,7 @@ public class FloatService extends Service {
         instance = this;
         Prefs.init(this);
         ScriptStore.init(this);
+        TplStore.init(this);
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         startInForeground();
     }

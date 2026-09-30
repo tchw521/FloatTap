@@ -2,6 +2,7 @@ package com.lazytap.clicker;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.content.Intent;
 import android.os.Build;
 import android.provider.Settings;
@@ -239,6 +240,113 @@ public final class JsApi {
     public String curApp() {
         TapService svc = TapService.get();
         return svc == null ? "" : svc.topPkg();
+    }
+
+    // ---------- 图色识别 ----------
+
+    @JavascriptInterface
+    public String capStatus() {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("granted", Capture.granted());
+            o.put("running", Capture.running());
+            o.put("w", Capture.width());
+            o.put("h", Capture.height());
+            JSONArray t = new JSONArray();
+            for (String n : TplStore.names()) t.put(n);
+            o.put("tpls", t);
+        } catch (Exception ignored) {
+        }
+        return o.toString();
+    }
+
+    /** 拉起系统截屏授权弹窗，结果由 MainActivity 回调 */
+    @JavascriptInterface
+    public String reqCap() {
+        try {
+            Intent i = Capture.requestIntent(c);
+            if (i == null) return "err:这台设备不支持截屏";
+            if (c instanceof Activity) {
+                ((Activity) c).startActivityForResult(i, MainActivity.REQ_CAP);
+                return "ok";
+            }
+            return "err:没法拉起授权弹窗";
+        } catch (Exception e) {
+            return "err:" + e.getMessage();
+        }
+    }
+
+    @JavascriptInterface
+    public String capStop() {
+        CaptureService.stop(c);
+        Capture.stop();
+        return "ok";
+    }
+
+    /** 给界面用的缩略截图（base64 PNG），只用来取点 / 取色 */
+    @JavascriptInterface
+    public String shot() {
+        Bitmap bmp = Capture.shot(c, 2500);
+        if (bmp == null) return "err:没截到屏，先授权截屏";
+        int maxW = 420;
+        int w = bmp.getWidth(), h = bmp.getHeight();
+        int tw = Math.min(maxW, w), th = Math.max(1, h * tw / w);
+        Bitmap small = Bitmap.createScaledBitmap(bmp, tw, th, true);
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        small.compress(Bitmap.CompressFormat.PNG, 80, bos);
+        String b64 = android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.DEFAULT);
+        return "data:image/png;base64," + b64.replace("\n", "");
+    }
+
+    /** 真实屏幕坐标处的颜色 */
+    @JavascriptInterface
+    public String colorAt(String xy) {
+        Bitmap bmp = Capture.last();
+        if (bmp == null) return "err:还没有截图";
+        try {
+            int i = xy.indexOf(',');
+            int x = Integer.parseInt(xy.substring(0, i).trim());
+            int y = Integer.parseInt(xy.substring(i + 1).trim());
+            int bw = bmp.getWidth(), bh = bmp.getHeight();
+            float sx = (float) bw / (Capture.width() > 0 ? Capture.width() : bw);
+            float sy = (float) bh / (Capture.height() > 0 ? Capture.height() : bh);
+            int px = Math.min(bw - 1, Math.max(0, Math.round(x * sx)));
+            int py = Math.min(bh - 1, Math.max(0, Math.round(y * sy)));
+            int c = bmp.getPixel(px, py);
+            return String.format("#%06X", c & 0xFFFFFF);
+        } catch (Exception e) {
+            return "err:" + e.getMessage();
+        }
+    }
+
+    /** 把屏幕上的一块区域存成模板图（找图用） */
+    @JavascriptInterface
+    public String saveTpl(String json) {
+        Bitmap bmp = Capture.last();
+        if (bmp == null) return "err:还没有截图";
+        try {
+            JSONObject o = new JSONObject(json);
+            String name = o.optString("name", "").trim();
+            if (name.isEmpty()) return "err:给模板起个名字";
+            int bw = bmp.getWidth(), bh = bmp.getHeight();
+            float sx = (float) bw / (Capture.width() > 0 ? Capture.width() : bw);
+            float sy = (float) bh / (Capture.height() > 0 ? Capture.height() : bh);
+            int x = Math.round(o.optInt("x", 0) * sx);
+            int y = Math.round(o.optInt("y", 0) * sy);
+            int w = Math.round(o.optInt("w", 60) * sx);
+            int h = Math.round(o.optInt("h", 60) * sy);
+            Bitmap crop = Img.crop(bmp, x, y, w, h);
+            if (crop == null) return "err:裁剪失败";
+            boolean ok = TplStore.save(name, crop);
+            return ok ? "ok" : "err:保存失败";
+        } catch (Exception e) {
+            return "err:" + e.getMessage();
+        }
+    }
+
+    @JavascriptInterface
+    public String delTpl(String name) {
+        return TplStore.del(name) ? "ok" : "err:删不掉";
     }
 
     @JavascriptInterface

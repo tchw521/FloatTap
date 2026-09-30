@@ -1,6 +1,7 @@
 package com.lazytap.clicker;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.KeyEvent;
@@ -13,6 +14,8 @@ import android.webkit.WebViewClient;
 /** 壳子很薄：一个 WebView + JS 桥，界面全在 assets/www 里用 JS 写 */
 public class MainActivity extends Activity {
 
+    static final int REQ_CAP = 101;
+
     private WebView web;
 
     @Override
@@ -20,6 +23,7 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         Prefs.init(this);
         ScriptStore.init(this);
+        TplStore.init(this);
         Trigger.scheduleAll(this);
         setContentView(R.layout.main);
         web = findViewById(R.id.web);
@@ -73,6 +77,20 @@ public class MainActivity extends Activity {
             else sb.append(c);
         }
         return sb.append('"').toString();
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == REQ_CAP) {
+            if (res == RESULT_OK && data != null) {
+                Capture.setResult(res, data);
+                CaptureService.start(this);   // Android 14 起必须挂前台服务
+                push("cap", "ok");
+            } else {
+                push("cap", "no");
+            }
+        }
     }
 
     @Override
