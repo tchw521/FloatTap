@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">懒人点击器</string>
+    <string name="acc_desc">懒人点击器需要用无障碍服务来替你点点点：自动点击、滑动、长按、输入文字、录制你的操作。它不看你的隐私，只帮你摸鱼。</string>
+    <string name="tile_label">运行当前脚本</string>
+    <string name="notify_channel">悬浮球服务</string>
+    <string name="notify_text">悬浮球待命，点一下让手指休息</string>
+    <string name="need_accessibility">请先开启无障碍服务，不然我只能干瞪眼</string>
+    <string name="need_overlay">请先授予「显示在其他应用上层」权限</string>
+</resources>

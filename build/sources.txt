@@ -1,0 +1,13 @@
+/workspace/LazyTap/src/com/lazytap/clicker/ScriptStore.java
+/workspace/LazyTap/src/com/lazytap/clicker/Prefs.java
+/workspace/LazyTap/src/com/lazytap/clicker/ScriptRunner.java
+/workspace/LazyTap/src/com/lazytap/clicker/Bus.java
+/workspace/LazyTap/src/com/lazytap/clicker/TapService.java
+/workspace/LazyTap/src/com/lazytap/clicker/FloatService.java
+/workspace/LazyTap/src/com/lazytap/clicker/JsApi.java
+/workspace/LazyTap/src/com/lazytap/clicker/MainActivity.java
+/workspace/LazyTap/src/com/lazytap/clicker/QuickTile.java
+/workspace/LazyTap/src/com/lazytap/clicker/BootReceiver.java
+/workspace/LazyTap/src/com/lazytap/clicker/Trigger.java
+/workspace/LazyTap/src/com/lazytap/clicker/TriggerReceiver.java
+/workspace/LazyTap/build/gen/com/lazytap/clicker/R.java

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#FFF7F3</color>
+    <color name="primary">#FF6B35</color>
+    <color name="accent">#2EC4B6</color>
+    <color name="ball">#FF6B35</color>
+    <color name="ball_running">#2ECC71</color>
+    <color name="ball_record">#E74C3C</color>
+</resources>
