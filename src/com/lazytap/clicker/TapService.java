@@ -20,6 +20,8 @@ import android.view.KeyEvent;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+
+import org.json.JSONObject;
 import android.widget.Toast;
 
 import java.util.List;
@@ -108,15 +110,22 @@ public class TapService extends AccessibilityService {
             info.flags |= AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             setServiceInfo(info);
         }
-        ScriptRunner.get().setListener((type, data) -> {
+        // v2.7.0：多播注册。TapService 是常驻的权威消费者：把引擎事件转发进 Bus
+        //（界面 / 浮层各自从 Bus 拿，不再由这里捎带刷新）。
+        // 注意旧版靠「单 listener 后注册覆盖前注册」才没把事件双推给 WebView——
+        // 多播后 MainActivity 不许再注册 ScriptRunner listener，只走 Bus 一条路。
+        ScriptRunner.get().addListener((type, data) -> {
             Bus.emit(type, data);
+            boolean running = false;
+            try {
+                running = "running".equals(new JSONObject(data).optString("state"));
+            } catch (Throwable ignored) {
+            }
             // v2.2.0：脚本一开跑就把运行浮层拉起来（不显示球），
             // 起不来（后台启动受限 / 没悬浮窗权限）就当没这功能，不影响跑脚本
-            if ("status".equals(type) && data != null && data.startsWith("running")
-                    && FloatService.get() == null && Prefs.getBool("runOverlay", true)) {
+            if (running && FloatService.get() == null && Prefs.getBool("runOverlay", true)) {
                 FloatService.startRun(this);
             }
-            if (FloatService.get() != null) FloatService.get().refresh();
         });
         Bus.emit("service", "on");
         Trigger.scheduleAll(this); // 服务活了，把定时触发器排上
@@ -170,7 +179,7 @@ public class TapService extends AccessibilityService {
             JsEngine.get().stop();
             ScriptRunner.get().note("按了" + HotKey.name(event.getKeyCode())
                     + (event.getRepeatCount() >= HotKey.LONG_AT ? "（长按）" : "") + "，急停");
-            Bus.emit("status", "stopped||vol");
+            Bus.emit("status", "{\"state\":\"stopped\",\"extra\":\"vol\"}");   // v2.7.0：状态统一 JSON
             if (FloatService.get() != null) FloatService.get().refresh();
             return true;
         }

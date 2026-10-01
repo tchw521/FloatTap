@@ -26,15 +26,28 @@ public final class LogLine {
     public final long t;
     public final int lv;
     public final String m;
+    /** v2.7.0：这行日志属于哪次运行（RunSlot 的 runId）。0 = 系统消息 / 无归属 / 老数据 */
+    public final long r;
 
     public LogLine(String m, int lv) {
         this(System.currentTimeMillis(), m, lv);
     }
 
+    /** 老构造器：不带运行归属，r = 0（老数据、系统消息） */
     public LogLine(long t, String m, int lv) {
+        this(RunSlot.NO_RUN, t, m, lv);
+    }
+
+    /** v2.7.0：带运行归属的日志行 —— 引擎线程写日志的常态入口（3 参形状已被老构造器占用） */
+    public static LogLine of(long r, String m, int lv) {
+        return new LogLine(r, System.currentTimeMillis(), m, lv);
+    }
+
+    public LogLine(long r, long t, String m, int lv) {
         this.t = t;
         this.m = m == null ? "" : m;
         this.lv = lv < INFO ? INFO : (lv > ERR ? ERR : lv);
+        this.r = r < RunSlot.NO_RUN ? RunSlot.NO_RUN : r;
     }
 
     /**
@@ -75,6 +88,7 @@ public final class LogLine {
             o.put("lv", lv);
             o.put("m", m);
             o.put("c", clock());
+            if (r != RunSlot.NO_RUN) o.put("r", r);   // 0 不输出：老数据/系统消息没徽标
         } catch (JSONException ignored) {
         }
         return o;

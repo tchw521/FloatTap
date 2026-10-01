@@ -46,6 +46,12 @@ public final class ScriptRunner {
     private volatile String currentId = "";
     /** v2.2.0：运行浮层与日志面板要显示「第几步 / 共几步」，这两个值给外部读 */
     private volatile int progCur, progTotal;
+    /** v2.7.0：本次运行会话 id（引擎动作脚本与 JS 脚本共用一个序列）。0 = 没在跑，日志归系统 */
+    private volatile long runId;
+    /** v2.7.0：本次引擎动作脚本的运行槽（含名字/进度/时长，浮层与聚合吃它） */
+    private volatile RunSlot slot;
+    /** v2.7.0：JS 脚本的运行槽（startJs 建、stopJs 或跑完注销） */
+    private volatile RunSlot jsSlot;
     /** JS 模式用的循环设置：-1=一直跑，其余为轮数；jsDelayMs 是开跑前的等待 */
     private volatile int jsLoops = 1, jsDelayMs;
     private volatile long runStartAt;
@@ -55,7 +61,8 @@ public final class ScriptRunner {
     private JSONArray actions;
     private int index;
     private JSONObject script;
-    private Listener listener;
+    /** v2.7.0：多播——浮层 / 磁贴 / 界面各自订阅，互不认识 */
+    private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private long loopStart;
     private final java.util.HashMap<String, Integer> counters = new java.util.HashMap<>();
     /** 最近一次图色命中的坐标，形如 "x,y"，供后续动作引用 */
@@ -85,8 +92,13 @@ public final class ScriptRunner {
         return instance;
     }
 
-    public void setListener(Listener l) {
-        this.listener = l;
+    /** v2.7.0：多播注册。一个监听者抛异常不影响其余（遍历照常走完） */
+    public void addListener(Listener l) {
+        if (l != null && !listeners.contains(l)) listeners.add(l);
+    }
+
+    public void removeListener(Listener l) {
+        listeners.remove(l);
     }
 
     public boolean isRunning() {
@@ -122,7 +134,7 @@ public final class ScriptRunner {
     /** 日志面板的「清空」按钮 */
     public void clearLogs() {
         logs.clear();
-        if (listener != null) listener.on("log", "");
+        for (Listener l : listeners) l.on("log", "");
     }
 
     private void log(String s) {
@@ -139,9 +151,11 @@ public final class ScriptRunner {
 
     private void log(String s, int lv) {
         if (s == null) return;
-        logs.add(new LogLine(s, lv));
+        // v2.7.0：这行日志归属哪次运行（runId），停止后归 0（系统消息）——
+        // 两脚本交替跑时日志面板靠它区分是谁写的
+        logs.add(LogLine.of(runId, s, lv));
         while (logs.size() > LogLine.CAP) logs.remove(0);
-        if (listener != null) listener.on("log", s);
+        for (Listener l : listeners) l.on("log", s);
     }
 
     /** 给外部（服务 / 悬浮球）往日志页里写一句话 */
@@ -154,8 +168,43 @@ public final class ScriptRunner {
         logW(s);
     }
 
+    /**
+     * v2.7.0：状态广播从管道串（"running|id|extra"）升级成 JSON——
+     * 多任务以后一个状态串塞不下，且消费方（MainActivity）要拿 runId 判断是不是新会话。
+     */
     private void status(String s, String extra) {
-        if (listener != null) listener.on("status", s + "|" + currentId + "|" + extra);
+        JSONObject o = new JSONObject();
+        try {
+            o.put("state", s);
+            o.put("runId", runId);
+            o.put("id", currentId);
+            o.put("name", currentName());
+            if (extra != null && !extra.isEmpty()) o.put("extra", extra);
+        } catch (Throwable ignored) {
+        }
+        for (Listener l : listeners) l.on("status", o.toString());
+    }
+
+    // ---------- v2.7.0：运行槽（RunSlot）同步 ----------
+
+    /** 引擎槽的进度跟着 progCur/progTotal 走（浮层从槽读，不再读单例散字段） */
+    private void syncSlot() {
+        RunSlot s = slot;
+        if (s != null) s.setProg(progCur, progTotal);
+    }
+
+    /** 会话结束（急停 / 自然收工）注销槽——注销即从聚合与浮层里消失 */
+    private void retireSlot() {
+        RunSlot s = slot;
+        if (s != null) {
+            s.unregister();
+            slot = null;
+        }
+        RunSlot js = jsSlot;
+        if (js != null) {
+            js.unregister();
+            jsSlot = null;
+        }
     }
 
     // ---------- v2.2.0：运行浮层要读的进度 ----------
@@ -206,6 +255,11 @@ public final class ScriptRunner {
             logE("脚本是空的，加两步再来");
             return false;
         }
+        // v2.7.0：领一个运行会话 id，挂进注册表——日志归属、浮层、聚合都认它
+        runId = RunSlot.nextId();
+        slot = new RunSlot(runId, false);
+        slot.setMeta(currentId, sc.optString("name", ""));
+        slot.register();
         jitter = on(sc, "jitter", false);
         int loops = sc.optInt("loopCount", 1);
         boolean forever = on(sc, "loop", false);
@@ -230,6 +284,7 @@ public final class ScriptRunner {
         runStartAt = loopStart;
         progTotal = actions.length();
         progCur = 0;
+        syncSlot();
         int delay = sc.optInt("startDelay", 0); // 开始前先等几秒，方便切到目标 App
         if (delay > 0) {
             log("先等 " + delay + " 秒，你快切过去");
@@ -245,8 +300,12 @@ public final class ScriptRunner {
         rs.stop();                   // 停了要叫醒挂着的 gate/sleep，不然线程吊死
         repeatLeft = 0;
         if (h != null) h.removeCallbacksAndMessages(null);
+        // v2.7.0：先广播（runId 还在，前端知道是哪次会话结束）再注销——
+        // 之后的「停下了」归系统（r=0），不挂给刚结束的会话
+        if (!currentId.isEmpty()) status("stopped", "");
+        retireSlot();
+        runId = RunSlot.NO_RUN;
         if (was) log("停下了");   // 手动刹车也要留痕，不然日志里看不出是自己停的还是跑完的
-        if (listener != null && !currentId.isEmpty()) status("stopped", "");
         currentId = "";
         progCur = 0;
         progTotal = 0;
@@ -264,6 +323,8 @@ public final class ScriptRunner {
             return;
         }
         if (rs.pause()) {
+            RunSlot s = slot;
+            if (s != null) s.setState("paused");
             log("暂停了（音量键短按或点「▶ 恢复」继续）");
             status("paused", "");
         }
@@ -272,6 +333,8 @@ public final class ScriptRunner {
     /** v2.5.0：恢复。把 step 循环从挂起里放出来 */
     public void resume() {
         if (rs.resume()) {
+            RunSlot s = slot;
+            if (s != null) s.setState("running");
             log("继续跑");
             status("running", "resume");
         }
@@ -309,11 +372,15 @@ public final class ScriptRunner {
             }
             rs.stop();
             progCur = progTotal;
+            syncSlot();
             log("跑完收工，手指保住了");
             status("stopped", "done");
+            retireSlot();                       // v2.7.0：自然收工也注销，别留僵尸槽
+            runId = RunSlot.NO_RUN;
             return;
         }
         progCur = Math.min(index + 1, progTotal);   // 运行浮层读它显示「第几步」
+        syncSlot();
         JSONObject raw = actions.optJSONObject(index);
         if (raw == null) {
             index++;
@@ -338,6 +405,8 @@ public final class ScriptRunner {
             rs.stop();
             log("按剧本收工");
             status("stopped", "done");
+            retireSlot();                       // v2.7.0
+            runId = RunSlot.NO_RUN;
             return;
         }
         if (jump == JUMP_LOOP) {         // 立刻重来一轮
@@ -676,6 +745,8 @@ public final class ScriptRunner {
                         rs.stop();
                         logE("按剧本：找不到就收工");
                         status("stopped", "fail");
+                        retireSlot();               // v2.7.0
+                        runId = RunSlot.NO_RUN;
                         return JUMP_END;
                     }
                 }
@@ -1390,6 +1461,11 @@ public final class ScriptRunner {
         jsMode = true;
         rs.start();
         String name = script.optString("name", "未命名");
+        // v2.7.0：JS 会话也有自己的槽——浮层与聚合从此显示真实脚本名（以前只能写「JS 脚本」）
+        runId = RunSlot.nextId();
+        jsSlot = new RunSlot(runId, true);
+        jsSlot.setMeta(currentId, name);
+        jsSlot.register();
         log("开跑（JS）：" + name);
         status("running", name);
         return true;
@@ -1400,7 +1476,13 @@ public final class ScriptRunner {
         rs.stop();
         repeatLeft = 0;
         if (h != null) h.removeCallbacksAndMessages(null);
-        if (listener != null && !currentId.isEmpty()) status("stopped", "");
+        if (!currentId.isEmpty()) status("stopped", "");   // runId 还在，前端知道哪次会话结束
+        RunSlot js = jsSlot;
+        if (js != null) {
+            js.unregister();
+            jsSlot = null;
+        }
+        runId = RunSlot.NO_RUN;
         currentId = "";
     }
 

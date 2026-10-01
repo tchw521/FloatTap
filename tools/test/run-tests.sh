@@ -19,7 +19,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # 把要测的源码剥掉 package 放到 out/ 下，测的是真代码
-for f in Expr Vars Share LogLine HotKey Timing NodeMatch RunState SubCall; do
+for f in Expr Vars Share LogLine HotKey Timing NodeMatch RunState SubCall RunSlot Bus; do
   sed 's/^package com\.lazytap\.clicker;//' "$SRC/$f.java" > "$OUT/$f.java"
 done
 
@@ -48,7 +48,7 @@ javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/Share.java" S.java
 java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" S | tail -2
 
 echo "==> 运行日志（L + 真实 LogLine）"
-javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/LogLine.java" L.java
+javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/LogLine.java" "$OUT/RunSlot.java" L.java
 java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" L | tail -2
 
 echo "==> 音量键急停（K + 真实 HotKey）"
@@ -58,6 +58,10 @@ java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" K | tail -2
 echo "==> 运行三态（R + 真实 RunState，含真线程的挂起/唤醒）"
 javac -nowarn -encoding UTF-8 -d "$OUT" "$OUT/RunState.java" R.java
 java -Dfile.encoding=UTF-8 -cp "$OUT" R | tail -2
+
+echo "==> 运行会话与多播（SlotTest + 真实 RunSlot/Bus/LogLine）"
+javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/RunSlot.java" "$OUT/Bus.java" "$OUT/LogLine.java" SlotTest.java
+java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" SlotTest | tail -2
 
 echo "==> 子脚本调用（SuTest + 真实 SubCall）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/SubCall.java" SuTest.java

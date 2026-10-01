@@ -214,7 +214,10 @@ public final class JsApi {
                     || Prefs.getBool("recordingOn", false));
             o.put("touch", svc != null && svc.touchOn());
             o.put("ball", FloatService.get() != null && FloatService.get().ballShown());
-            o.put("log", ScriptRunner.get().logsJson(80));   // 带时间和级别，日志面板要着色
+            o.put("log", ScriptRunner.get().logsJson(80));   // 带时间和级别（含 v2.7.0 的运行归属 r），日志面板要着色
+            // v2.7.0：全部活着的运行会话（形状按多条设计，单例时代实际 ≤2 条）。
+            // running/paused/current 保留旧字段，前端零改动
+            o.put("runs", RunSlot.aggregate(RunSlot.ACTIVE).optJSONArray("runs"));
             ScriptRunner r = ScriptRunner.get();
             o.put("prog", r.hasProgress() ? (r.progressCur() + "/" + r.progressTotal()) : "");
             o.put("runName", r.isBusy() ? r.currentName() : "");   // 暂停时名字也要留着显示

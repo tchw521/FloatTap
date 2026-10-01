@@ -43,16 +43,10 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new JsApi(this), "app");
         web.loadUrl("file:///android_asset/www/index.html");
 
-        Bus.setSink((type, data) -> push(type, data));
-        ScriptRunner.get().setListener((type, data) -> {
-            push(type, data);
-            // v2.2.0：开跑时把运行浮层拉起来（不显示球）
-            if ("status".equals(type) && data != null && data.startsWith("running")
-                    && FloatService.get() == null && Prefs.getBool("runOverlay", true)) {
-                FloatService.startRun(this);
-            }
-            if (FloatService.get() != null) FloatService.get().refresh();
-        });
+        // v2.7.0：只走 Bus 一条通道把事件推给页面。以前 ScriptRunner listener 与 Bus
+        // 各推一次、靠单 listener 的「后注册覆盖」才没重复——多播后必须只留一条。
+        busSink = (type, data) -> push(type, data);
+        Bus.addSink(busSink);
     }
 
     /** 把内核事件推给页面里的 window.__on(type, data) */
@@ -118,9 +112,12 @@ public class MainActivity extends Activity {
                 });
     }
 
+    /** v2.7.0：Bus 订阅句柄，onDestroy 时反注册 */
+    private Bus.Sink busSink;
+
     @Override
     protected void onDestroy() {
-        Bus.setSink(null);
+        Bus.removeSink(busSink);
         if (web != null) {
             ((ViewGroup) web.getParent()).removeAllViews();
             web.destroy();

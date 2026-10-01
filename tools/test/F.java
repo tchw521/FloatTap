@@ -141,6 +141,10 @@ public class F {
         String findCase = block(src, src.indexOf("case \"find\":"));
         ok("find 命中回填 lastX/lastY（rememberHit）",
                 Pattern.compile("^\\s*rememberHit\\(", Pattern.MULTILINE).matcher(findCase).find());
+        // v2.7.0：引擎写日志必须带运行归属（runId）——两脚本交替跑不串日志靠它，
+        // 改回不带归属的老写法（new LogLine(s, lv)）这里要红
+        String logM = methodBlock(src, "private void log(String s, int lv)");
+        ok("引擎日志带运行归属（LogLine.of(runId)）", logM.contains("LogLine.of(runId"));
         ok("execIf 也认这三个新条件", has(engine, "if", "id") && has(engine, "if", "desc")
                 && has(engine, "if", "re"));
         // 条件侧的检查两边不对称：「能填但不读」看 f，「在读但没入口」看 def，两边都得有
@@ -164,7 +168,7 @@ public class F {
         // 应用内的「更新日志」曾经停更在 v1.4.0，后面七个版本用户都看不到。
         // 这里钉一条：发新版时必须同步 app.js 里的 CHANGELOG 第一条。
         String top = firstVer(js);
-        ok("应用内更新日志的第一条就是当前版本", "2.6.0".equals(top), "现在是 " + top);
+        ok("应用内更新日志的第一条就是当前版本", "2.7.0".equals(top), "现在是 " + top);
 
         System.out.println(fails == 0 ? "  —— 全通过" : "  —— 失败 " + fails + " 项");
         if (fails > 0) System.exit(1);

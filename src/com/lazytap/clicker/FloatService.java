@@ -66,17 +66,15 @@ public class FloatService extends Service {
     private long lastTap;
     private Runnable tapRun;
 
-    // ---------- v2.2.0 运行浮层 ----------
-    private View runBar;
-    private WindowManager.LayoutParams runParams;
-    private TextView runName, runProg;
-    /** v2.5.0：暂停/恢复按钮，文案随状态在 ⏸/▶ 之间切 */
-    private TextView runPause;
+    // ---------- v2.2.0 运行浮层（v2.7.0 起支持多条：每个运行会话一根） ----------
+    /** 活着的状态条，key = 运行会话 runId。上限 MAX_BARS，超过的不显示 */
+    private final java.util.HashMap<Long, RunBarBox> runBars = new java.util.HashMap<>();
+    /** 浮层最多同时显示几根（v3.0.0 并行前的形状预留） */
+    private static final int MAX_BARS = 3;
     private boolean runDismissed;   // 本次运行里手动收起了，下次开跑再出来
     private boolean lastBusy;
-    private float runSx, runSy;
-    private int runPx, runPy;
-    private boolean runMoved;
+    /** v2.7.0：Bus 订阅句柄（状态变化刷新自己），onDestroy 反注册 */
+    private Bus.Sink busSink;
 
     @Override
     public void onCreate() {
@@ -87,6 +85,9 @@ public class FloatService extends Service {
         TplStore.init(this);
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         startInForeground();
+        // v2.7.0：浮层自己订阅 Bus（状态一变刷自己），不再靠 MainActivity 捎带
+        busSink = (type, data) -> refresh();
+        Bus.addSink(busSink);
     }
 
     @Override
@@ -265,7 +266,7 @@ public class FloatService extends Service {
      * 别在通知栏里赖着。判断条件是「一个 View 都不剩」，而不是只看某个标志位。
      */
     private void maybeRetire() {
-        if (ball != null || bar != null || runBar != null || touchView != null) return;
+        if (ball != null || bar != null || !runBars.isEmpty() || touchView != null) return;
         if (!runOnly && !touchOnly) return;
         runOnly = false;
         touchOnly = false;
@@ -434,192 +435,245 @@ public class FloatService extends Service {
      * 所以它能拖到任意位置，也能单独收起。
      */
     private void syncRunBar() {
-        boolean busy = ScriptRunner.get().isBusy() || JsEngine.get().isBusy();
+        boolean busy = !RunSlot.ACTIVE.isEmpty();
         if (busy && !lastBusy) runDismissed = false;  // 新一轮开始，上一次的「收起」作废
         lastBusy = busy;
         boolean want = busy && !runDismissed && Prefs.getBool("runOverlay", true);
-        if (want && runBar == null) showRunBar();
-        else if (!want && runBar != null) hideRunBar();
-        if (want && runBar != null) updateRunBar();
-    }
-
-    private void showRunBar() {
-        if (runBar != null) return;
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.HORIZONTAL);
-        root.setBackground(new RoundBg(dp(16), Color.parseColor("#F0161418"),
-                Color.parseColor("#55FFFFFF")));
-        root.setPadding(dp(4), dp(4), dp(6), dp(4));
-
-        // 左边这一块是拖拽区：里面的 TextView 不可点，不会跟拖拽抢事件
-        LinearLayout zone = new LinearLayout(this);
-        zone.setOrientation(LinearLayout.VERTICAL);
-        zone.setPadding(dp(10), dp(5), dp(8), dp(5));
-        runName = new TextView(this);
-        runName.setTextColor(Color.WHITE);
-        runName.setTypeface(Typeface.DEFAULT_BOLD);
-        runName.setTextSize(13f);
-        runName.setSingleLine(true);
-        runName.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        runProg = new TextView(this);
-        runProg.setTextColor(Color.parseColor("#C8FFFFFF"));
-        runProg.setTextSize(11.5f);
-        zone.addView(runName);
-        zone.addView(runProg);
-        root.addView(zone);
-        // v2.5.0：暂停⇄恢复。JS 脚本跑着时这个按钮会被藏起来（JS 暂不支持暂停）
-        runPause = barBtn("⏸ 暂停", "#F39C12", () -> {
-            ScriptRunner.get().togglePause();
-            refresh();
-        });
-        root.addView(runPause);
-        root.addView(barBtn("■ 停止", () -> {
-            ScriptRunner.get().stop();
-            JsEngine.get().stop();
-            toast("已刹车");
-            refresh();
-        }));
-        root.addView(barBtn("✕", "#55FFFFFF", () -> {
-            runDismissed = true;
+        if (!want) {
             hideRunBar();
-            toast("状态条收起了，下一轮会自己回来");
-        }));
-
-        zone.setOnTouchListener((v, ev) -> {
-            switch (ev.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    runSx = ev.getRawX();
-                    runSy = ev.getRawY();
-                    runPx = runParams.x;
-                    runPy = runParams.y;
-                    runMoved = false;
-                    return true;
-                case MotionEvent.ACTION_MOVE:
-                    float dx = ev.getRawX() - runSx, dy = ev.getRawY() - runSy;
-                    if (!runMoved && Math.abs(dx) + Math.abs(dy) > dp(6)) runMoved = true;
-                    if (runMoved) {
-                        runParams.x = (int) (runPx + dx);
-                        runParams.y = (int) (runPy + dy);
-                        try {
-                            wm.updateViewLayout(root, runParams);
-                        } catch (Throwable ignored) {
-                        }
-                    }
-                    return true;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (runMoved) {
-                        clampRun();
-                        return true;
-                    }
-                    // 没拖动就当点了状态条：把界面叫回来
-                    startActivity(new Intent(this, MainActivity.class)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                                    | Intent.FLAG_ACTIVITY_SINGLE_TOP));
-                    return true;
+            return;
+        }
+        // v2.7.0：按注册表快照对齐——结束的会话收条，新会话各建一条（最多 MAX_BARS）
+        java.util.ArrayList<RunSlot> slots = new java.util.ArrayList<>(RunSlot.ACTIVE);
+        for (Long id : new java.util.ArrayList<>(runBars.keySet())) {
+            boolean alive = false;
+            for (RunSlot s : slots) if (s.runId == id) { alive = true; break; }
+            if (!alive) {
+                RunBarBox b = runBars.remove(id);
+                if (b != null) b.remove();
             }
-            return false;
-        });
-
-        int type = Build.VERSION.SDK_INT >= 26
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE;
-        runParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, type,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT);
-        runParams.gravity = Gravity.TOP | Gravity.LEFT;
-        int sw = getResources().getDisplayMetrics().widthPixels;
-        int sh = getResources().getDisplayMetrics().heightPixels;
-        int rx = Prefs.getInt("runX", -1);
-        int ry = Prefs.getInt("runY", -1);
-        runParams.x = rx < 0 ? dp(14) : Math.min(rx, Math.max(0, sw - dp(90)));
-        runParams.y = ry < 0 ? (int) (sh * 0.20) : ry;
-
-        runBar = root;
-        try {
-            wm.addView(runBar, runParams);
-            updateRunBar();
+        }
+        int shown = 0;
+        for (RunSlot s : slots) {
+            if (shown >= MAX_BARS) break;
+            RunBarBox b = runBars.get(s.runId);
+            if (b == null) {
+                b = new RunBarBox(s.runId, shown);
+                runBars.put(s.runId, b);
+                b.add();
+            }
+            b.update(s);
+            shown++;
+        }
+        if (!runBars.isEmpty()) {
             h.removeCallbacks(runTick);
             h.postDelayed(runTick, 500);   // 时长与进度自己走，不用每次动作都刷新
-        } catch (Throwable t) {
-            runBar = null;
-            runName = null;
-            runProg = null;
-            runPause = null;
         }
     }
 
-    private void hideRunBar() {
-        h.removeCallbacks(runTick);
-        if (runBar != null) {
+    /**
+     * 一条状态条：视图、窗口参数、文本引用、拖拽状态全在一起，
+     * 生命周期跟一个运行会话（RunSlot）绑定——会话结束条就收。
+     * 拖拽与位置记忆沿用旧版：第 1 条记住位置（runX/runY），其余条纵向错开。
+     */
+    private class RunBarBox {
+        final long runId;
+        final LinearLayout root;
+        final TextView name, prog, pauseBtn;
+        final WindowManager.LayoutParams params;
+        final int baseX, baseY;          // 未拖拽时的初始位置（第 1 条来自记忆）
+        final boolean js;                // JS 会话没有暂停键（v2.5.0 起的约定）
+        int idx;                         // 第几根（0 起）
+        volatile RunSlot slot;           // 正在显示的槽（tick 刷新用）
+        private float sx, sy;            // 拖拽起点
+        private int px, py;              // 拖拽前的窗口位置
+        private boolean moved;
+
+        RunBarBox(long runId, int idx) {
+            this.runId = runId;
+            this.idx = idx;
+            RunSlot s = findSlot(runId);
+            this.js = s != null && s.js;
+
+            root = new LinearLayout(FloatService.this);
+            root.setOrientation(LinearLayout.HORIZONTAL);
+            root.setBackground(new RoundBg(dp(16), Color.parseColor("#F0161418"),
+                    Color.parseColor("#55FFFFFF")));
+            root.setPadding(dp(4), dp(4), dp(6), dp(4));
+
+            // 左边这一块是拖拽区：里面的 TextView 不可点，不会跟拖拽抢事件
+            LinearLayout zone = new LinearLayout(this.root.getContext());
+            zone.setOrientation(LinearLayout.VERTICAL);
+            zone.setPadding(dp(10), dp(5), dp(8), dp(5));
+            name = new TextView(FloatService.this);
+            name.setTextColor(Color.WHITE);
+            name.setTypeface(Typeface.DEFAULT_BOLD);
+            name.setTextSize(13f);
+            name.setSingleLine(true);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            prog = new TextView(FloatService.this);
+            prog.setTextColor(Color.parseColor("#C8FFFFFF"));
+            prog.setTextSize(11.5f);
+            zone.addView(name);
+            zone.addView(prog);
+            root.addView(zone);
+            // v2.5.0：暂停⇄恢复。JS 脚本跑着时这个按钮会被藏起来（JS 暂不支持暂停）
+            pauseBtn = barBtn("⏸ 暂停", "#F39C12", () -> {
+                ScriptRunner.get().togglePause();
+                refresh();
+            });
+            root.addView(pauseBtn);
+            root.addView(barBtn("■ 停止", () -> {
+                // v2.7.0：停自己这条会话——JS 停 JS，引擎停引擎
+                if (js) JsEngine.get().stop();
+                else ScriptRunner.get().stop();
+                toast("已刹车");
+                refresh();
+            }));
+            root.addView(barBtn("✕", "#55FFFFFF", () -> {
+                runDismissed = true;
+                hideRunBar();
+                toast("状态条收起了，下一轮会自己回来");
+            }));
+
+            // 窗口参数先于拖拽 listener 初始化——final 字段没赋值前，lambda 捕获它编译不过
+            int type = Build.VERSION.SDK_INT >= 26
+                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    : WindowManager.LayoutParams.TYPE_PHONE;
+            params = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, type,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    PixelFormat.TRANSLUCENT);
+            params.gravity = Gravity.TOP | Gravity.LEFT;
+            int sw = getResources().getDisplayMetrics().widthPixels;
+            int sh = getResources().getDisplayMetrics().heightPixels;
+            int rx = Prefs.getInt("runX", -1);
+            int ry = Prefs.getInt("runY", -1);
+            baseX = rx < 0 ? dp(14) : Math.min(rx, Math.max(0, sw - dp(90)));
+            baseY = ry < 0 ? (int) (sh * 0.20) : ry;
+            params.x = baseX;
+            params.y = baseY + idx * dp(52);   // 多条纵向错开，别叠在一起
+
+            zone.setOnTouchListener((v, ev) -> {
+                switch (ev.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        sx = ev.getRawX();
+                        sy = ev.getRawY();
+                        px = params.x;
+                        py = params.y;
+                        moved = false;
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        float dx = ev.getRawX() - sx, dy = ev.getRawY() - sy;
+                        if (!moved && Math.abs(dx) + Math.abs(dy) > dp(6)) moved = true;
+                        if (moved) {
+                            params.x = (int) (px + dx);
+                            params.y = (int) (py + dy);
+                            try {
+                                wm.updateViewLayout(root, params);
+                            } catch (Throwable ignored) {
+                            }
+                        }
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (moved) {
+                            clamp();
+                            return true;
+                        }
+                        // 没拖动就当点了状态条：把界面叫回来
+                        startActivity(new Intent(FloatService.this, MainActivity.class)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                                        | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+                        return true;
+                }
+                return false;
+            });
+        }
+
+        void add() {
             try {
-                wm.removeView(runBar);
+                wm.addView(root, params);
+            } catch (Throwable t) {
+                runBars.remove(runId);
+            }
+        }
+
+        void remove() {
+            try {
+                wm.removeView(root);
             } catch (Throwable ignored) {
             }
-            runBar = null;
-            runName = null;
-            runProg = null;
-            runPause = null;
         }
+
+        /** 按槽刷文案：状态与进度都从槽来（旧版读单例散字段，JS 只能显示「JS 脚本」） */
+        void update(RunSlot s) {
+            slot = s;
+            String nm = s.scriptName().isEmpty() ? "脚本" : s.scriptName();
+            String pr;
+            if ("paused".equals(s.state())) {
+                // v2.5.0：暂停要一眼看出来，别让用户以为脚本还在跑
+                nm = "⏸ " + nm;
+                pr = "已暂停 · 点「▶ 恢复」或音量键短按继续";
+            } else if (!s.js) {
+                nm = "🏃 " + nm;
+                pr = s.progTotal() > 0 ? ("第 " + s.progCur() + "/" + s.progTotal() + " 步") : "刚起步";
+            } else {
+                nm = "🏃 " + nm;
+                pr = "运行中";
+            }
+            long sec = s.elapsed() / 1000;
+            pr += " · 已跑 " + (sec >= 60 ? (sec / 60) + "分" + (sec % 60) + "秒" : sec + "秒");
+            name.setText(nm);
+            prog.setText(pr);
+            if (pauseBtn != null) {
+                // 引擎槽才显示暂停键；JS 会话藏起来——v2.5.0 不暂停 JS
+                pauseBtn.setVisibility(js ? View.GONE : View.VISIBLE);
+                pauseBtn.setText("paused".equals(s.state()) ? "▶ 恢复" : "⏸ 暂停");
+            }
+        }
+
+        /** 拖完夹回屏幕内；只有第 1 条记忆位置 */
+        private void clamp() {
+            int sw = getResources().getDisplayMetrics().widthPixels;
+            int sh = getResources().getDisplayMetrics().heightPixels;
+            int w = root.getWidth(), hh = root.getHeight();
+            params.x = Math.max(0, Math.min(params.x, Math.max(0, sw - w)));
+            params.y = Math.max(0, Math.min(params.y, Math.max(0, sh - hh)));
+            if (idx == 0) {
+                Prefs.put("runX", params.x);
+                Prefs.put("runY", params.y);
+            }
+            try {
+                wm.updateViewLayout(root, params);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private RunSlot findSlot(long runId) {
+        for (RunSlot s : RunSlot.ACTIVE) if (s.runId == runId) return s;
+        return null;
+    }
+
+    /** 收掉全部状态条（「✕ 收起」与服务销毁用） */
+    private void hideRunBar() {
+        h.removeCallbacks(runTick);
+        for (RunBarBox b : runBars.values()) b.remove();
+        runBars.clear();
     }
 
     /** 半秒刷一次「第几步 / 已跑多久」 */
     private final Runnable runTick = new Runnable() {
         @Override
         public void run() {
-            if (runBar == null) return;
-            updateRunBar();
+            if (runBars.isEmpty()) return;
+            for (RunBarBox b : runBars.values()) if (b.slot != null) b.update(b.slot);
             h.postDelayed(this, 500);
         }
     };
-
-    private void updateRunBar() {
-        if (runName == null || runProg == null) return;
-        ScriptRunner r = ScriptRunner.get();
-        String nm, pr;
-        if (r.isPaused()) {
-            // v2.5.0：暂停要一眼看出来，别让用户以为脚本还在跑
-            nm = "⏸ " + r.currentName();
-            pr = "已暂停 · 点「▶ 恢复」或音量键短按继续";
-        } else if (r.isRunning()) {
-            nm = "🏃 " + r.currentName();
-            pr = r.hasProgress()
-                    ? ("第 " + r.progressCur() + "/" + r.progressTotal() + " 步")
-                    : "刚起步";
-        } else {
-            nm = "🏃 JS 脚本";
-            pr = "运行中";
-        }
-        long s = r.elapsed() / 1000;
-        pr += " · 已跑 " + (s >= 60 ? (s / 60) + "分" + (s % 60) + "秒" : s + "秒");
-        runName.setText(nm);
-        runProg.setText(pr);
-        if (runPause != null) {
-            // 引擎忙才显示暂停键；JS 模式（引擎闲、JS 忙）藏起来——v2.5.0 不暂停 JS
-            boolean engineBusy = r.isBusy();
-            runPause.setVisibility(engineBusy ? View.VISIBLE : View.GONE);
-            runPause.setText(r.isPaused() ? "▶ 恢复" : "⏸ 暂停");
-        }
-    }
-
-    /** 拖完夹回屏幕内，并记住位置 */
-    private void clampRun() {
-        if (runBar == null) return;
-        int sw = getResources().getDisplayMetrics().widthPixels;
-        int sh = getResources().getDisplayMetrics().heightPixels;
-        int w = runBar.getWidth(), hh = runBar.getHeight();
-        runParams.x = Math.max(0, Math.min(runParams.x, Math.max(0, sw - w)));
-        runParams.y = Math.max(0, Math.min(runParams.y, Math.max(0, sh - hh)));
-        Prefs.put("runX", runParams.x);
-        Prefs.put("runY", runParams.y);
-        try {
-            wm.updateViewLayout(runBar, runParams);
-        } catch (Throwable ignored) {
-        }
-    }
 
     public boolean ballShown() {
         return ball != null;
@@ -832,6 +886,7 @@ public class FloatService extends Service {
 
     @Override
     public void onDestroy() {
+        Bus.removeSink(busSink);
         stopTouchCapture();
         hideRunBar();
         hideBall();

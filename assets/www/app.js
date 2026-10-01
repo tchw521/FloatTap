@@ -651,6 +651,12 @@
   function logText(l) {
     return (typeof l === 'string') ? l : ((l && l.m) || '');
   }
+  // v2.7.0：运行归属徽标（#<runId>）。r>0 才显示；r=0 是系统消息/老数据，无徽标。
+  // 只在渲染层加，统计（logLvOf）与复制（logCopy 走纯文本）都不经过这里。
+  function logBadge(l) {
+    var r = (l && typeof l.r === 'number') ? l.r : 0;
+    return (r > 0) ? '<span class="lrb">#' + r + '</span>' : '';
+  }
 
   function viewLog() {
     var st = S.st || {};
@@ -692,7 +698,7 @@
         var lv = logLvOf(l);
         var c = (l && l.c) || '';
         return '<div class="lg lv' + lv + '">' + (c ? '<span class="lt">' + esc(c) + '</span>' : '')
-          + esc(logText(l)) + '</div>';
+          + logBadge(l) + esc(logText(l)) + '</div>';
       }).join('');
     }
     h += '</div></div>';
@@ -812,6 +818,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.7.0</div>多任务基建（还不是真并行，为下版打底）：日志每行带上<b>#编号</b>，标出是第几次跑写的——两脚本交替跑也不串；悬浮条最多能同屏 <b>3 条</b>，各自显示进度和暂停键，JS 脚本也显示真实脚本名了；音量键急停、状态面板改走结构化消息。界面看着变化不大，底下把「正在跑什么」从单例字段换成了可多开的「运行会话」记账。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.6.0</div>动作列表新增<b>子脚本</b>：把常用流程单独存成一个脚本，别的脚本里一条动作就能调它，还能<b>传参</b>（填 JSON，如 {"n":1}，子脚本里用 {{n}} 引用）；子脚本里写的变量跑完还在，父脚本接着就能读，算它的回值。子脚本里的「收工／重来」只结束子脚本、不带走父脚本；套娃最多 5 层，A 调 B、B 调 A 的死循环进不来。JS 脚本也补齐了查找：<b>tapText／hasText</b> 支持控件 id、内容描述、正则选项，新增 <b>findText</b>（只找不点，立刻回坐标）、<b>waitText</b>（等文字出现再往下走）、<b>runSub</b>（JS 里也能调子脚本）。找文字／找色／找图命中后坐标都会记进 {{lastX}}／{{lastY}}。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.5.0</div>运行能<b>暂停</b>了：悬浮条多了「⏸ 暂停 / ▶ 恢复」按钮，暂停后跑到哪一步记住哪一步，恢复从断点继续、不丢进度；等待中的动作也能立刻暂停，暂停期间不吃等待时长。音量键升级三态：<b>短按</b>切换暂停/恢复、<b>长按</b>才是急停，没跑脚本时音量归系统管。磁贴、悬浮球、日志面板都能看出暂停态。JS 脚本模式暂不支持暂停（短按就是急停），下版再补。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.4.0</div>找节点补上三个新条件：<b>控件 id</b>（填 ok 或 com.xxx:id/ok 都行）、<b>正则</b>（按正则在文字里搜，不用加 ^$）、<b>内容描述</b>（desc）。多个条件全部满足才算命中；描述留空时沿用老样子（文字或描述任一命中），填了才改成「文字归文字、描述归描述」。顺手修掉两个老毛病：只填 id 不填文字以前会被当成「没填」直接判不成立；一屏里第 41 个往后永远取不到（「第几个」填大了就静默失效）。新增 52 条节点匹配单测。',

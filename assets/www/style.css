@@ -284,6 +284,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
   white-space:pre-wrap;word-break:break-word;line-height:1.6}
 .log .lg:first-child{border-top:0}
 .log .lt{flex:0 0 62px;color:var(--sub);opacity:.75;font-size:11px;user-select:none}
+/* v2.7.0 运行归属徽标：#<runId>，灰底小圆角；r=0（系统/老数据）不渲染 */
+.log .lrb{flex:0 0 auto;background:var(--line);color:var(--sub);border-radius:4px;
+  padding:0 5px;font-size:10px;line-height:1.7;user-select:none}
 .log .lg.lv1{color:#b45309}
 .log .lg.lv2{color:var(--warn);font-weight:700}
 .log .lg.empty{color:var(--sub);border-top:0;justify-content:center;padding:14px 0}

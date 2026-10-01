@@ -131,6 +131,13 @@ App 不在前台也生效，重启后自动重排；同一条规则 8 秒冷却�
 同一套机制也开放给了 JS 脚本：`runSub("签到", {n: 3})` 在 JS 里直接调，
 新增的 `findText`（只找不点、立刻回坐标）和 `waitText`（等文字出现）让 JS 写起来更顺手。
 
+**运行会话（v2.7.0）**：每一次运行都有了**自己的身份证（runId）**——日志每行带灰色 `#编号` 徽标，
+两脚本交替跑也能一眼分清哪行是谁写的，状态各记各的。悬浮运行条最多能**同屏 3 条**，
+各自显示脚本名、进度、暂停键，停止按钮只停自己那条；JS 脚本也显示真实脚本名了。
+状态广播升级成结构化 JSON（带 runId 的 `runs` 数组聚合），界面看着变化不大，
+底下把「正在跑什么」从单例字段换成了可多开的记账方式——**还不是真并行**（引擎同时仍跑一个动作脚本
++ 一个 JS），这是给 v3.0.0 多任务并行打的地基。
+
 **运行日志面板（v2.2.0 重做）**：每行带 `09:12:09` 的时间戳、**按级别着色**（普通黑 / 提醒黄 / 出错红加粗）、
 顶部有「共 N 条 · X 条出错 · Y 条提醒」的统计。可以**切到「只看提醒」** ——
 循环脚本跑一晚上几百行「没找到…再等等」，一档就能滤到真正要看的那几条。
@@ -164,7 +171,7 @@ App 不在前台也生效，重启后自动重排；同一条规则 8 秒冷却�
 
 ## 三、怎么用（安装后 60 秒上手）
 
-1. 安装 APK（用 `adb install LazyTap-v2.6.0.apk` 或传到手机点开安装）。
+1. 安装 APK（用 `adb install LazyTap-v2.7.0.apk` 或传到手机点开安装）。
 2. 打开 App → 首页顶部两个徽章会提示缺什么：
    - **开启无障碍服务**：点「开启无障碍」跳系统设置 → 找到「懒人点击器」→ 打开。
    - **授权悬浮窗**：点「授权悬浮窗」→ 允许「显示在其他应用上层」。
@@ -195,7 +202,7 @@ App 不在前台也生效，重启后自动重排；同一条规则 8 秒冷却�
 | 构建 | aapt2 → javac → d8 → zipalign → apksigner | 不用 Gradle，不拉 Maven，编译 5 秒 |
 
 **零第三方依赖**：无 androidx、无 React Native、无 Capacitor、无 OkHttp。
-所以 dex 才 152 KB、整包 145 KB，常驻内存开销就是「一个前台服务 + 一个后台线程」。
+所以 dex 才 157 KB、整包 149 KB，常驻内存开销就是「一个前台服务 + 一个后台线程」。
 顺带一提，对标的自动精灵是 44 MB —— 它带 QuickJS、ML Kit OCR 和端上模型，我们带的是算法。
 
 ### 源文件
@@ -213,8 +220,9 @@ src/com/lazytap/clicker/
   Vars.java                   变量表 + {{}} 插值 + 内置变量
   Timing.java                 等待时长 / 轮询截止 / 节奏倍率（零 Android 依赖，可单测）
   NodeMatch.java              节点匹配：文字 / 描述 / 控件 id / 正则 四条件（同上，v2.4.0）
-  LogLine.java / HotKey.java / RunState.java / SubCall.java
-                              结构化日志行 / 音量键判定（v2.2.0）/ 运行三态机（v2.5.0）/ 子脚本传参与深度守卫（v2.6.0）（均可单测）
+  LogLine.java / HotKey.java / RunState.java / SubCall.java / RunSlot.java
+                              结构化日志行（v2.7.0 起带运行归属 r）/ 音量键判定（v2.2.0）/ 运行三态机（v2.5.0）/
+                              子脚本传参与深度守卫（v2.6.0）/ 运行会话状态槽与聚合（v2.7.0）（均可单测）
   JsEngine.java               JS 脚本模式：隐藏 WebView + 异步动作桥
   Share.java                 分享码：紧凑数组 + Deflate + Base64URL
   ScriptStore.java            脚本 / 录制结果存取
@@ -246,12 +254,11 @@ assets/www/                   界面（index.html / app.js / style.css）
 
 | 版本 | 主题 |
 | --- | --- |
-| v2.6.0（当前） | 子脚本传参 + JS 模式补齐（findText / waitText / runSub） |
+| v2.7.0（当前） | 多任务基建（runId / 状态多播 / 浮层多条） |
 | v2.3.0 | 静默失效大扫除 |
 | v2.4.0 | 节点查找增强（viewId / 正则 / desc） |
 | v2.5.0 | 三态运行：暂停 / 恢复 + `RunState` |
 | v2.6.0 | JS 模式补齐 + 子脚本传参 |
-| v2.7.0 | 多任务基建（runId / 状态多播 / 浮层多条） |
 | v3.0.0 | 多任务并行（单例改实例池） |
 
 ---
@@ -260,8 +267,8 @@ assets/www/                   界面（index.html / app.js / style.css）
 
 ```bash
 export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-tools/34.0.0
-./build.sh 2.6.0 18                       # 参数：版本名 版本码
-# 产出 out/LazyTap-v2.6.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
+./build.sh 2.7.0 19                       # 参数：版本名 版本码
+# 产出 out/LazyTap-v2.7.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
 ```
 
 > 无网络时也能构建：整条流水线只依赖本地 Android SDK 和 JDK，不下载任何依赖。
@@ -289,8 +296,8 @@ KS_ALIAS=mykey KS_PASS=xxx KEY_PASS=xxx ./build.sh 2.2.0 14
 ### 跑测试
 
 ```bash
-bash tools/test/run-tests.sh      # 纯 Java 单测 475 项，只要装了 JDK 就能跑，不需要模拟器
-cd tools/smoke && npm i && node run.js   # UI 冒烟 11 套、155 张截图，需要 chromium（各套件单独跑：node v26.js 等）
+bash tools/test/run-tests.sh      # 纯 Java 单测 517 项，只要装了 JDK 就能跑，不需要模拟器
+cd tools/smoke && npm i && node run.js   # UI 冒烟 12 套、161 张截图，需要 chromium（各套件单独跑：node v27.js 等）
 ```
 
 ---
@@ -299,8 +306,8 @@ cd tools/smoke && npm i && node run.js   # UI 冒烟 11 套、155 张截图，�
 
 **已验证**
 
-- 十八版 APK 均通过 `apksigner verify`，`aapt2 dump badging` 显示包名、版本、权限、组件声明正确
-- **纯 Java 单测 475 项**（13 个测试类逐类实测），零 Android 依赖，CI 里每次提交都跑：
+- 十九版 APK 均通过 `apksigner verify`，`aapt2 dump badging` 显示包名、版本、权限、组件声明正确
+- **纯 Java 单测 517 项**（14 个测试类逐类实测），零 Android 依赖，CI 里每次提交都跑：
   条件语义（and/or/count、8 种条件类型、重复检查、参数夹取、停止中断、日志明细）、
   分享码往返（含 v2.0.0 新增的嵌套 `cs` 数组、中文/emoji/JS 代码、脏数据与坏码容错）、
   动作分组四种跑法（v2.1.0）、**运行日志行**（级别夹取 / 关键词兜底分级 / 时间格式 / JSON 序列化，v2.2.0）、
@@ -313,6 +320,9 @@ cd tools/smoke && npm i && node run.js   # UI 冒烟 11 套、155 张截图，�
   —— 短按切换 4 种、长按急停 6 种，只有唯一正确组合会拦）、
   **子脚本调用**（v2.6.0：传参解析——坏 JSON / 数组 / 裸字符串整条拒绝、键值平铺的类型转换、
   套娃深度守卫 5 层上限、回值组装、子循环跳转按子脚本自己步号解释的语义仿真）、
+  **运行会话与多播**（v2.7.0：runId 分配递增不重复、槽快照形状、聚合「最忙优先」、
+  注销即从聚合消失、**两脚本交替跑不串日志仿真**、LogLine 归属字段兼容与负值夹 0、
+  Bus 多播——一个 sink 抛异常其余照收 / removeSink 后不再收 / 重复 add 只派一次）、
   **字段对账**（v2.3.0：直接读 `app.js` 与 `ScriptRunner.java`，抓「表单能填但引擎不读」和
   「引擎在读但表单没入口」两类静默失效 —— `clickable` / `step` / `timeout` 就是这么揪出来的）
 - **交叉对账了界面与引擎的字段形态**：把界面存的每个字段类型和引擎读取方式全量比对，

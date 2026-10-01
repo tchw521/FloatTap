@@ -48,9 +48,21 @@ const MOCK_SRC = `() => {
     { id: 't2', kind: 'notify', script: 'a4', on: true, text: '到账', pkg: '' },
     { id: 't3', kind: 'unlock', script: 'a2', on: false }
   ];
-  const logs = ['开跑：每天签到', '先等 3 秒，你快切过去', '打开 com.tencent.mm',
-    '找到「签到」@540,1180', '✓ 有「领取成功」', '计数 n = 1', '多指 双指捏合',
-    '找色 #ff3b30 → 命中 @720,310', '比色 #12c46a → 命中', '找图 跳过广告 → 命中 @980,160'];
+  // v2.7.0：日志带运行归属——r>0 渲染 #r 徽标，r=0 系统行无徽标；
+  // 末尾留一条纯字符串（老格式兼容路径也要有人看着）。lv 与内核 LogLine 对齐。
+  const logs = [
+    { r: 0, m: '已连上无障碍服务', lv: 0 },
+    { r: 1, m: '开跑：每天签到', lv: 0 },
+    { r: 1, m: '先等 3 秒，你快切过去', lv: 0 },
+    { r: 1, m: '打开 com.tencent.mm', lv: 0 },
+    { r: 2, m: '找到「签到」@540,1180', lv: 0 },
+    { r: 2, m: '✓ 有「领取成功」', lv: 0 },
+    { r: 0, m: '音量键急停（长按）', lv: 1 },
+    { r: 2, m: '计数 n = 1', lv: 0 },
+    { r: 2, m: '找色 #ff3b30 → 命中 @720,310', lv: 0 },
+    '比色 #12c46a → 命中',
+    { r: 3, m: '找图 跳过广告 → 命中 @980,160', lv: 0 }
+  ];
   window.__tpls = ['签到按钮', '跳过广告'];
   window.app = {
     scripts: () => JSON.stringify(window.__scripts || scripts),
@@ -60,9 +72,15 @@ const MOCK_SRC = `() => {
     fireTrigger: () => 'ok',
     togglePause: () => 'paused',   // v2.5.0：暂停⇄恢复，前端点了不能炸
     curApp: () => 'com.tencent.mm',
-    status: () => JSON.stringify({ running: false, current: '', acc: true, overlay: true,
+    // v2.7.0：status 带新字段 runs（RunSlot 聚合快照）+ __mockRunning 开关——
+    // 老字段 running/current/js 一个不动，验证新旧并存下大卡与磁贴不回归。
+    // window.__runs 形状对齐 RunSlot.snapshot：{runId,state,id,name,prog,total,elapsed,js}
+    status: () => JSON.stringify({ running: !!window.__mockRunning,
+      current: window.__mockRunning ? 'a1' : '', runName: window.__mockRunning ? '每天签到' : '',
+      acc: true, overlay: true,
       recording: true, touch: true, ball: true, log: logs, screen: { w: 1080, h: 1920 },
-      vars: [{ k: 'n', v: '2' }, { k: 'gap', v: '1000' }], js: false }),
+      vars: [{ k: 'n', v: '2' }, { k: 'gap', v: '1000' }], js: false,
+      runs: window.__runs || [] }),
     prefs: () => JSON.stringify({ ballSize: 54, ballAlpha: 0.88, speed: 1, mode: 'normal',
       vibrate: true, boot: false, theme: 'orange', lastScript: 'a1',
       autoRecordDelay: true, touchRecord: true, recordingOn: true }),
@@ -125,7 +143,9 @@ const MOCK_SRC = `() => {
       window.__scripts = cur;
       return 'ok:1';
     },
-    copy: () => 'ok'
+    copy: () => 'ok',
+    // v2.7.0：日志复制走 copyText——记下内容让冒烟能断言「复制的是纯文本，不带徽标」
+    copyText: t => { window.__lastCopy = t; return 'ok'; }
   };
 }`;
 const MOCK_IIFE = '(' + MOCK_SRC + ')();';
