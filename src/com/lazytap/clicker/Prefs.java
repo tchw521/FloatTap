@@ -42,6 +42,9 @@ public final class Prefs {
             o.put("triggers", "");      // 自动化触发器数组（JSON 字符串）
             o.put("theme", "orange");   // 界面主色：orange|teal|violet|blue|green|pink
             o.put("guideShown", false); // v3.2.0 权限引导弹层只自动弹一次的标记
+            o.put("pinOn", true);       // v4.1.0 坐标指示器：运行时在点位上画序号准星
+            o.put("randOffset", 5);     // v4.1.0 防检测：点击落点在 ±N px 内随机偏移（0=关）
+            o.put("pinMs", 800);        // v4.1.0 指示器停留毫秒数
         } catch (JSONException ignored) {
         }
         return o;

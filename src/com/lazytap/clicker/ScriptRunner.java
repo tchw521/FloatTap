@@ -288,6 +288,7 @@ public final class ScriptRunner implements RunnerPool.Lane {
         rs.stop();                   // 停了要叫醒挂着的 gate/sleep，不然线程吊死
         repeatLeft = 0;
         if (h != null) h.removeCallbacksAndMessages(null);
+        Pins.hide();                 // v4.1.0：急停/自然停都把指示器收掉（幂等）
         // v2.7.0：先广播（runId 还在，前端知道是哪次会话结束）再注销——
         // 之后的「停下了」归系统（r=0），不挂给刚结束的会话
         if (!currentId.isEmpty()) status("stopped", "");
@@ -362,6 +363,7 @@ public final class ScriptRunner implements RunnerPool.Lane {
             progCur = progTotal;
             syncSlot();
             log("跑完收工，手指保住了");
+            Pins.hide();                        // v4.1.0：收工把指示器一并收掉
             status("stopped", "done");
             retireSlot();                       // v2.7.0：自然收工也注销，别留僵尸槽
             runId = RunSlot.NO_RUN;
@@ -392,6 +394,7 @@ public final class ScriptRunner implements RunnerPool.Lane {
         if (jump == JUMP_END) {          // 直接收工
             rs.stop();
             log("按剧本收工");
+            Pins.hide();                 // v4.1.0
             status("stopped", "done");
             retireSlot();                       // v2.7.0
             runId = RunSlot.NO_RUN;
@@ -629,6 +632,7 @@ public final class ScriptRunner implements RunnerPool.Lane {
                     cy = cy / 100f * svc.screenH();
                     r = r / 100f * svc.screenW();
                 }
+                Pins.show(svc, cx, cy, Pins.SHAPE_TAP, vars.step);   // v4.1.0：亮出中心点位
                 svc.multi(mode, cx, cy, r, a.optLong("ms", 400));
                 log("多指 " + MULTI_NAME(mode));
                 break;
@@ -648,6 +652,14 @@ public final class ScriptRunner implements RunnerPool.Lane {
                     x += (rnd.nextFloat() - 0.5f) * 2 * r;
                     y += (rnd.nextFloat() - 0.5f) * 2 * r;
                 }
+                // v4.1.0 防检测：落点在 ±randOffset px 内再随机偏移一次（动作自带的
+                // random 半径是「功能」，这个是「拟人」，两者叠加互不干扰）
+                int off = Prefs.getInt("randOffset", 5);
+                x += Rnd.offset(off, rnd);
+                y += Rnd.offset(off, rnd);
+                // v4.1.0 坐标指示器：先亮准星再落手指，用户看得见每一步点了哪
+                int shape = t.equals("long") ? Pins.SHAPE_HOLD : Pins.SHAPE_TAP;
+                Pins.show(svc, x, y, shape, vars.step);
                 if (t.equals("click") || t.equals("random")) {
                     svc.tap(x, y, 60);
                     log("戳 (" + (int) x + "," + (int) y + ")");
@@ -677,6 +689,13 @@ public final class ScriptRunner implements RunnerPool.Lane {
                     y1 = y1 / 100f * svc.screenH();
                     y2 = y2 / 100f * svc.screenH();
                 }
+                // v4.1.0 防检测：起终点各自偏移——整段滑动平移不变形
+                int off = Prefs.getInt("randOffset", 5);
+                x1 += Rnd.offset(off, rnd);
+                y1 += Rnd.offset(off, rnd);
+                x2 += Rnd.offset(off, rnd);
+                y2 += Rnd.offset(off, rnd);
+                Pins.showSwipe(svc, x1, y1, x2, y2, vars.step);
                 long ms = a.optLong("ms", 400);
                 svc.swipe(x1, y1, x2, y2, ms);
                 log("滑 (" + (int) x1 + "," + (int) y1 + ")→(" + (int) x2 + "," + (int) y2 + ")");

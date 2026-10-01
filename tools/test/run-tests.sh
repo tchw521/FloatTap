@@ -19,7 +19,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # 把要测的源码剥掉 package 放到 out/ 下，测的是真代码
-for f in Expr Vars Share LogLine HotKey Timing NodeMatch RunState SubCall RunSlot Bus RunnerPool LogStore Match GlobalVars Locks; do
+for f in Expr Vars Share LogLine HotKey Timing NodeMatch RunState SubCall RunSlot Bus RunnerPool LogStore Match GlobalVars Locks Rnd; do
   sed 's/^package com\.lazytap\.clicker;//' "$SRC/$f.java" > "$OUT/$f.java"
 done
 
@@ -86,6 +86,10 @@ java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" SuTest | tail -2
 echo "==> 等待与超时（W + 真实 Timing）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/Timing.java" W.java
 java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" W | tail -2
+
+echo "==> 防检测随机（RndT + 真实 Rnd，采样验证边界）"
+javac -nowarn -encoding UTF-8 -d "$OUT" "$OUT/Rnd.java" RndT.java
+java -Dfile.encoding=UTF-8 -cp "$OUT" RndT | tail -2
 
 echo "==> 节点匹配（N + 真实 NodeMatch）"
 # NodeMatch 连 org.json 都不碰，所以这步不用挂 json.jar

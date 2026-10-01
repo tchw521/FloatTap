@@ -168,7 +168,22 @@ public class F {
         // 应用内的「更新日志」曾经停更在 v1.4.0，后面七个版本用户都看不到。
         // 这里钉一条：发新版时必须同步 app.js 里的 CHANGELOG 第一条。
         String top = firstVer(js);
-        ok("应用内更新日志的第一条就是当前版本", "4.0.0".equals(top), "现在是 " + top);
+        ok("应用内更新日志的第一条就是当前版本", "4.1.0".equals(top), "现在是 " + top);
+
+        // v4.1.0 坐标指示器 + 防检测偏移：曾是本版主菜，改引擎时别把接线删了——
+        // 点击类四兄弟必须亮准星，swipe 必须亮连线，落点必须过 Rnd.offset
+        String clickCase = block(src, src.indexOf("case \"click\":"));
+        ok("点击类动作亮坐标指示器（Pins.show）",
+                Pattern.compile("^\\s*Pins\\.show\\(svc", Pattern.MULTILINE).matcher(clickCase).find());
+        String swipeCase = block(src, src.indexOf("case \"swipe\":"));
+        ok("滑动亮连线指示器（Pins.showSwipe）",
+                Pattern.compile("^\\s*Pins\\.showSwipe\\(svc", Pattern.MULTILINE).matcher(swipeCase).find());
+        ok("点击落点过防检测偏移（Rnd.offset）",
+                Pattern.compile("^\\s*x \\+= Rnd\\.offset\\(", Pattern.MULTILINE).matcher(clickCase).find());
+        ok("滑动起终点过防检测偏移",
+                Pattern.compile("^\\s*x1 \\+= Rnd\\.offset\\(", Pattern.MULTILINE).matcher(swipeCase).find());
+        ok("收工收指示器（stop 里 Pins.hide）",
+                methodBlock(src, "public void stop()").contains("Pins.hide()"));
 
         System.out.println(fails == 0 ? "  —— 全通过" : "  —— 失败 " + fails + " 项");
         if (fails > 0) System.exit(1);
