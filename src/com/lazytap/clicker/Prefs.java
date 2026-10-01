@@ -41,6 +41,7 @@ public final class Prefs {
             o.put("lastScript", "");
             o.put("triggers", "");      // 自动化触发器数组（JSON 字符串）
             o.put("theme", "orange");   // 界面主色：orange|teal|violet|blue|green|pink
+            o.put("guideShown", false); // v3.2.0 权限引导弹层只自动弹一次的标记
         } catch (JSONException ignored) {
         }
         return o;

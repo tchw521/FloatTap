@@ -111,19 +111,35 @@ public class FloatService extends Service {
         return START_STICKY;
     }
 
+    /** v3.2.0：startRun 失败提示的节流戳——脚本每开跑一轮都会走到这里，不节流会刷屏 */
+    private static volatile long lastNoteAt;
+
+    private static void note(String s) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastNoteAt < 10_000) return;
+        lastNoteAt = now;
+        ScriptRunner.sysNote(s);
+    }
+
     /** 运行浮层自己拉起服务（不显示球）。起不来就算了，浮层只是锦上添花 */
     public static void startRun(Context c) {
         if (instance != null) {
             instance.refresh();
             return;
         }
-        if (Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(c)) return;
+        if (Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(c)) {
+            // v3.2.0：不再纯静默——用户看不到浮层至少得在日志里知道为什么（10 秒节流防刷屏）
+            note("悬浮窗没授权，运行浮层没显示——脚本照跑；去「我的」授权悬浮窗");
+            return;
+        }
         Intent i = new Intent(c, FloatService.class);
         i.setAction(A_RUN);
         try {
             if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i);
             else c.startService(i);
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            // v3.2.0：MIUI 的「后台弹出界面」之类权限拦的就是这里——把原因落到日志
+            note("运行浮层没拉起来：" + t + "——多半是系统拦了后台弹窗，脚本照跑");
         }
     }
 

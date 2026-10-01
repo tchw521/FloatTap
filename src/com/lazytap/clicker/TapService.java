@@ -149,6 +149,9 @@ public class TapService extends AccessibilityService {
     @Override
     public boolean onUnbind(Intent intent) {
         instance = null;
+        // v3.2.0：部分 ROM 回收服务时只走 onUnbind 不走 onDestroy，
+        // 不发这条前端徽章会挂着假「已开」——双发幂等（onDestroy 也发），无害
+        Bus.emit("service", "off");
         return super.onUnbind(intent);
     }
 

@@ -240,6 +240,11 @@ public final class JsApi {
             o.put("acc", TapService.enabled(c));
             o.put("overlay", overlayOk());
             TapService svc = TapService.get();
+            // v3.2.0：linked = 服务实例真连上（acc 只说明系统设置里开关是开的——
+            // MIUI 上有「开关显示开、服务没连上」的假死态，前端靠这俩字段不一致来提示重开）；
+            // manufacturer 给前端六家 ROM 白名单引导做匹配
+            o.put("linked", svc != null);
+            o.put("manufacturer", android.os.Build.MANUFACTURER == null ? "" : android.os.Build.MANUFACTURER);
             o.put("recording", (svc != null && svc.isRecording())
                     || Prefs.getBool("recordingOn", false));
             o.put("touch", svc != null && svc.touchOn());
