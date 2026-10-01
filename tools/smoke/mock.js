@@ -64,6 +64,9 @@ const MOCK_SRC = `() => {
     { r: 3, m: '找图 跳过广告 → 命中 @980,160', lv: 0 }
   ];
   window.__tpls = ['签到按钮', '跳过广告'];
+  // v3.1.0：字模库桩——形状与 TextTplStore 对齐（names 就是字符串数组），
+  // listTextTpls/saveTextTpl/delTextTpl 都从这仨走
+  window.__ttxts = [];
   window.app = {
     scripts: () => JSON.stringify(window.__scripts || scripts),
     saveScripts: j => { try { window.__scripts = JSON.parse(j); } catch (e) {} return 'ok'; },
@@ -151,11 +154,17 @@ const MOCK_SRC = `() => {
       { k: 'lastY', d: '最近一次找色/找图命中的纵坐标' },
       { k: 'loop', d: '当前第几轮' },
       { k: 'screenW', d: '屏幕宽度' },
-      { k: 'rand', d: '随机数' }
+      { k: 'rand', d: '随机数' },
+      // v3.1.0：与真内核 Vars.BUILTIN 对齐——插入变量菜单里要能翻到 {{g.名字}}
+      { k: 'g.名字', d: '跨脚本共享变量（v3.1.0）：globalSet 写，任何脚本任何字段里直接读' }
     ]),
     tryExpr: e => { try { return String(eval(e.replace(/rand\([^)]*\)/g, '42'))); } catch (x) { return 'err:读不懂'; } },
     saveTpl: j => { try { window.__tpls.push(JSON.parse(j).name); } catch (e) {} return 'ok'; },
     delTpl: n => { window.__tpls = window.__tpls.filter(x => x !== n); return 'ok'; },
+    // v3.1.0 伪 OCR：字模库三件套（跟图色模板 saveTpl/delTpl 分开管）
+    listTextTpls: () => JSON.stringify(window.__ttxts || []),
+    saveTextTpl: j => { try { window.__ttxts.push(JSON.parse(j).name); } catch (e) {} return 'ok'; },
+    delTextTpl: n => { window.__ttxts = (window.__ttxts || []).filter(x => x !== n); return 'ok'; },
     // v1.8.0 分享码：这里按真实格式伪造一段，界面只当字符串处理；
     // 编解码正确性由 /tmp/sharetest/S.java 的 21 项单测保证
     shareCode: id => {

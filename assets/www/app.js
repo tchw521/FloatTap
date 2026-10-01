@@ -1796,7 +1796,9 @@
         if (rect.x1 != null) {
           var w = rect.x1 - rect.x0, h2 = rect.y1 - rect.y0;
           if (w > 4 && h2 > 4) {
-            S.pick = { x: rect.x0, y: rect.y0, w: w, h: h2 };
+            // v3.1.0 修复：mode 必须带回去——case 'shotTpl' 预先存进 S.pick 的 mode
+            // 会在这里被整个覆盖，ttpl 框完弹的是「存成模板图」面板、保存进图色库
+            S.pick = { mode: mode, x: rect.x0, y: rect.y0, w: w, h: h2 };
             sheet(sheetTplSave());
           } else { toast('框太小了，再来一次'); rect = null; draw(); }
         }
