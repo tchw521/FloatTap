@@ -521,16 +521,61 @@
     return '<button class="catitem' + (S.cat === k ? ' on' : '') + '" data-act="cat" data-cat="' + esc(k) + '">'
       + '<span class="ce">' + e + '</span><span class="cn">' + esc(n) + '</span><span class="cc">' + cnt + '</span></button>';
   }
+  // v4.5.0：顶部全局搜索（对齐参考图——搜索是脚本页第一元素，薄荷描边胶囊）
+  // 只匹配脚本名 / 备注（不递归动作、不引入字模变量依赖），行为与旧 q 完全一致
+  function searchTop() {
+    return '<div class="search top"><span class="si">🔍</span>'
+      + '<input id="q" value="' + esc(S.q || '') + '" placeholder="搜脚本名或备注…"></div>';
+  }
+  // v4.5.0：侧栏「自定义分组」段尾的「＋ 新建/管理」入口（参考图：＋图标 + 单行「新建/管理」）
+  function catNewBtn() {
+    return '<button class="catitem new" data-act="newCat">'
+      + '<span class="ce">＋</span><span class="cn">新建/管理</span></button>';
+  }
+  // v4.5.0：侧栏「按应用」段（引擎未绑定包名，先占位；有数据再渲染，不造假数据）
+  function catByApp() {
+    return '<div class="csec">按应用</div>'
+      + '<div class="catempty">暂无</div>';
+  }
+  // v4.5.0：脚本卡（对齐参考图——左图标徽章 / 中名称大字 + 副信息 / 右操作区）
+  // 注意：保留原来的 ▶ 图标钮 + ⋯，不改成语义外的文字钮（用户明确要求）
+  // 副信息只用脚本自带的真实字段（动作数/循环/已跑/备注），不引入引擎没有的时间戳
+  function scriptCard(s, idx, q, running) {
+    var acts = s.actions || [];
+    // 第一行：规模 + 循环（参考图「8 个动作 · 昨天」位）
+    var line1 = s.kind === 'js' ? 'JS 脚本'
+      : acts.length + ' 个动作' + (s.loop ? ' · ∞ 循环' : ' · 跑 ' + (s.loopCount || 1) + ' 遍');
+    // 第二行：备注优先，没备注就显示已跑次数（参考图「23:10」位）
+    var line2 = s.desc ? esc(s.desc) : (s.runs ? '已跑 ' + s.runs + ' 次' : '');
+    return '<div class="item sitem' + (running ? ' run' : '') + '" data-id="' + s.id + '">'
+      + '<div class="hl"></div>'
+      + (q ? '' : '<div class="grip" data-drag="' + idx + '" data-list="scripts">⋮⋮</div>')
+      + '<div class="ic g' + toneCls(s.tone) + '" data-act="pickIcon" data-id="' + s.id + '">' + iconOf(s.icon) + '</div>'
+      + '<div class="grow" data-act="edit" data-id="' + s.id + '">'
+      + '<div class="t">' + esc(s.name)
+      + (s.kind === 'js' ? '<span class="chip">JS</span>' : '')
+      + (s.loop ? '<span class="chip b">∞ 循环</span>' : '') + '</div>'
+      + '<div class="d">' + line1 + (s.desc && s.runs ? ' · 已跑 ' + s.runs + ' 次' : '') + '</div>'
+      + (line2 ? '<div class="d2">' + line2 + '</div>' : '')
+      + '</div>'
+      + '<div class="acts">'
+      + (running
+        ? '<button class="btn sm warn" data-act="stop">■</button>'
+        : '<button class="btn sm ok" data-act="run" data-id="' + s.id + '">▶</button>')
+      + '<button class="btn sm ghost" data-act="more" data-id="' + s.id + '">⋯</button>'
+      + '</div></div>';
+  }
 
   function viewScripts() {
+    var q = (S.q || '').trim();
     if (!S.scripts.length) {
       return pageHead('我的脚本', '还没有作品 · 全部离线可用')
+        + searchTop()
         + heroCard()
         + '<div class="empty"><span class="e">🫠</span>这里空空如也，像我的钱包<br>'
         + '<span class="tiny">点下方 ✦ 挑个模板，或去「录制」偷一段操作</span></div>'
         + hintBox();
     }
-    var q = (S.q || '').trim();
     var list = S.scripts;
     if (q) {
       list = [];
@@ -550,56 +595,36 @@
       var cv = S.scripts[g].cat;
       if (cv && cats.indexOf(cv) < 0) cats.push(cv);
     }
+    // v4.5.0：搜索提到页头之下第一元素（对齐参考图），权限卡紧随其后
     var h = pageHead('我的脚本', S.scripts.length + ' 个脚本 · 全部离线可用')
-      + permCard() + heroCard() + hintBox();
-    if (S.scripts.length > 4 || q) {
-      h += '<div class="search"><span class="si">🔍</span>'
-        + '<input id="q" value="' + esc(S.q || '') + '" placeholder="搜脚本名或备注"></div>';
-    }
+      + searchTop() + permCard();
     if (!list.length) {
       return h + '<div class="empty"><span class="e">🔍</span>'
         + (q ? '没找到「' + esc(q) + '」<br><span class="tiny">换个词试试，或者干脆新建一个</span>'
              : '这个分组还没有脚本<br><span class="tiny">点脚本 → ⋯ → 分组，就能把它挪进来</span>')
         + '</div>';
     }
+    // v4.5.0：侧栏双段常驻（自定义分组 + 按应用占位），分组少也保留侧栏结构对齐参考图
     var body = '';
     for (var i = 0; i < list.length; i++) {
       var s = list[i];
-      var acts = s.actions || [];
       // v3.0.0：高亮按「这条脚本在哪个会话跑」匹配（runs 快照的 id 字段 = 脚本 id）
       var running = (S.st && S.st.runs || []).some(function (r) { return r.id === s.id; });
-      body += '<div class="item' + (running ? ' run' : '') + '" data-id="' + s.id + '">'
-        + '<div class="hl"></div>'
-        + (q ? '' : '<div class="grip" data-drag="' + S.scripts.indexOf(s) + '" data-list="scripts">⋮⋮</div>')
-        + '<div class="ic g' + toneCls(s.tone) + '" data-act="pickIcon" data-id="' + s.id + '">' + iconOf(s.icon) + '</div>'
-        + '<div class="grow" data-act="edit" data-id="' + s.id + '">'
-        + '<div class="t">' + esc(s.name) + (s.kind === 'js' ? '<span class="chip">JS</span>' : '')
-        + (s.loop ? '<span class="chip b">∞ 循环</span>' : '') + '</div>'
-        + '<div class="d">' + (s.desc ? esc(s.desc) + ' · ' : '')
-        + (s.kind === 'js' ? 'JS 脚本' : acts.length + ' 步'
-          + (s.loop ? '' : ' · 跑 ' + (s.loopCount || 1) + ' 遍'))
-        + (s.runs ? ' · 已跑 ' + s.runs + ' 次' : '') + '</div></div>'
-        + '<div class="acts">'
-        + (running
-          ? '<button class="btn sm warn" data-act="stop">■</button>'
-          : '<button class="btn sm ok" data-act="run" data-id="' + s.id + '">▶</button>')
-        + '<button class="btn sm ghost" data-act="more" data-id="' + s.id + '">⋯</button>'
-        + '</div></div>';
+      body += scriptCard(s, S.scripts.indexOf(s), q, running);
     }
-    // v4.0.0：有自定义分组（cat 字段）才出侧栏，没有就不占这一列
-    if (cats.length) {
-      h += '<div class="scwrap"><div class="cate">';
-      h += catBtn('all', '🧩', '全部', S.scripts.length);
-      for (var m = 0; m < cats.length; m++) {
-        var cn = 0;
-        for (var n2 = 0; n2 < S.scripts.length; n2++) if (S.scripts[n2].cat === cats[m]) cn++;
-        h += catBtn(cats[m], '🗂', cats[m], cn);
-      }
-      h += '</div><div class="list">' + body + '</div></div>';
-    } else {
-      h += '<div class="list">' + body + '</div>';
+    h += '<div class="scwrap"><div class="cate">';
+    h += '<div class="csec">自定义分组</div>';
+    h += catBtn('all', '🧩', '全部', S.scripts.length);
+    for (var m = 0; m < cats.length; m++) {
+      var cn = 0;
+      for (var n2 = 0; n2 < S.scripts.length; n2++) if (S.scripts[n2].cat === cats[m]) cn++;
+      h += catBtn(cats[m], '🗂', cats[m], cn);
     }
-    return h + '<div class="row" style="margin:12px 2px 0">'
+    h += catNewBtn();
+    h += catByApp();
+    h += '</div><div class="list">' + body + '</div></div>';
+    return h + heroCard()
+      + '<div class="row" style="margin:12px 2px 0">'
       + '<button class="btn sm ghost grow" data-tab="market">🏪 脚本市场</button>'
       + '<button class="btn sm ghost grow" data-act="import">📥 导入 JSON</button></div>';
   }
@@ -1013,6 +1038,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.5.0</div><b>脚本页重排 · 对齐新版布局</b>。<b>搜索框提到页面顶部</b>（页头之下第一元素，薄荷描边胶囊，搜脚本名或备注）；左侧栏改成<b>双段结构</b>——<b>自定义分组</b>（图标 + 名称 + 数量，末尾多一个「＋ 新建/管理」入口，点开能看分组清单和新建）加<b>按应用</b>段（引擎还没绑定包名，先留占位）；脚本卡重排为<b>左侧大图标徽章 + 大字脚本名 + 副信息</b>（N 个动作 · 循环方式 · 已跑次数 · 备注）<b>+ 右侧操作钮</b>（▶ 运行 / ⋯ 更多，跑起来变 ■）。其它页面和全部功能字段一字未动，引擎零改动。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.4.0</div><b>全面重绘 · 对齐液态玻璃原型</b>。五个页面统一换了版式：<b>大标题 + 副标题</b>开头（23px 加粗页头），脚本库多了<b>权限就绪卡</b>（🔓 权限全部就绪 · 无障碍已连接 · 悬浮窗已授权），每张卡片右上角加了<b>柔和高光斑</b>。编辑器大改：<b>圆角返回钮 + 大字脚本名 + 圆形播放键</b>一行排开，下面是<b>统计胶囊</b>（N 个动作 · 预计耗时 · 循环方式，预计耗时按每步延时现场算），底部多了一条<b>动作坞</b>悬浮在 Tab 栏之上——🎥 录制一键去录制页、＋ 添加动作主色宽钮常驻手边。主行动按钮、中央 ✦ 键（带「制作」小标签）全部对齐原型渐变，六套主题跟随变色。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.3.0</div><b>录制三态弹层</b>。点「⏺ 开始录制」不再直接开跑：先弹一层<b>准备页</b>把话说清楚——点哪里记哪里、顶部录制条能做什么、停止后动作落到哪；点「开始录制」切到<b>录制中</b>：红点脉冲、计时走表、<b>已记录 N 个动作</b>实时跳动（每 2 秒读一次引擎），回 app 也能在弹层里一键停，录完动作立刻落到列表。顺手把<b>拖拽排序</b>补进说明书：脚本库和动作时间线的 <b>⋮⋮</b> 拖柄按住就能上下拖，早就支持，现在有冒烟测试盯着。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.2.0</div><b>弹窗流重做</b>。「加动作」换新面孔：顶部是<b>常用</b>单列大行（点击／滑动／双击／长按／等待／开应用，一步直达），下面「全部动作」按<b>六组</b>排开（点按／手势／查找与识别／流程控制／输入与应用／变量与数据），27 个动作一个不落。动作表单拆成<b>通用 / 高级</b>两段：常用参数在前，跳转步号、识别收窄（描述／id／正则）、区域与超时、重复次数这些收进「高级设置」，不再一屏糊到底。点击类动作的表单顶部多了<b>屏幕预览</b>：直接在缩略屏上点一下就能拾取坐标，指示器跟着落点走，滑动是起点→终点两枚 pin 加连线（右上角「起点／终点」切换拾取目标）；「🎯 屏幕截图取点」照旧在高级设置里，两个入口并存。',
@@ -1463,7 +1489,8 @@
         + '<button class="btn sm ghost" data-act="delAct" data-i="' + i + '">✕</button>'
         + '</div></div>';
     }
-    // v4.4.0：底部动作坞（对齐原型 .dock：次要 ghost 钮 + 主渐变宽钮），sticky 贴底随列表滚
+    // v4.4.0 引入 / v4.5.0 修正：底部动作坞（对齐原型 .dock：次要 ghost 钮 + 主渐变宽钮）
+    // 不再用 sticky——悬浮会压住动作行导致点不到，改为贴在列表末尾的常规块
     // d2 用 button——旧冒烟按 button[data-act="addAct"] 找它，语义上也该是按钮
     return h + '</div><div class="dock"><div class="d1" data-tab="record">🎥 录制</div>'
       + '<button class="d2" data-act="addAct">＋ 添加动作</button></div>';
@@ -2242,6 +2269,9 @@
       case 'more': sheetMore(id); break;
         // v4.0.0：分组筛选与移动（cat 是脚本自由字段）
         case 'cat': S.cat = el.dataset.cat || 'all'; render(); break;
+        // v4.5.0：侧栏「＋ 新建/管理」——展示现有分组（可筛选）+ 新建入口
+        case 'newCat': sheetCatMgr(); break;
+        case 'catGo': S.cat = el.dataset.cat || 'all'; closeSheet(); render(); break;
         case 'moveCat': sheetMoveCat(id); break;
         case 'setCat': {
           var sc = findScript(id);
@@ -2753,6 +2783,35 @@
     }
     h += '<div class="row" style="margin-top:4px"><input id="ncat" placeholder="新分组名，如：挂机">'
       + '<button class="btn" data-act="setCatNew" data-id="' + id + '">建</button></div>';
+    sheet(h);
+  }
+
+  // v4.5.0：侧栏「＋ 新建/管理」弹层——列出已有分组（点即筛选）+ 一键新建
+  // 分组仍是脚本自由字段，本弹层不做独立分组库，避免与引擎字段脱节
+  function sheetCatMgr() {
+    var cats = [];
+    for (var i = 0; i < S.scripts.length; i++) {
+      var c = S.scripts[i].cat;
+      if (c && cats.indexOf(c) < 0) cats.push(c);
+    }
+    var h = '<h3>🗂 分组管理</h3><div class="muted" style="margin:-6px 0 10px">'
+      + '分组是脚本自己的标记，选中即筛选；新建后再进脚本 ⋯ → 分组把脚本挪进去。</div>';
+    if (!cats.length) {
+      h += '<div class="tiny" style="margin-bottom:10px">还没有分组——给任意脚本设一个就有了。</div>';
+    } else {
+      h += '<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">';
+      for (var j = 0; j < cats.length; j++) {
+        var cn = 0;
+        for (var k = 0; k < S.scripts.length; k++) if (S.scripts[k].cat === cats[j]) cn++;
+        h += '<button class="btn sm ghost" data-act="catGo" data-cat="' + esc(cats[j]) + '">🗂 '
+          + esc(cats[j]) + ' · ' + cn + '</button>';
+      }
+      h += '</div>';
+    }
+    h += '<div class="muted" style="margin-bottom:6px">给某个脚本新建分组：</div>'
+      + '<div class="row" style="margin-bottom:12px"><input id="ncat2" placeholder="分组名，如：挂机"></div>'
+      + '<div class="tiny" style="margin:-6px 0 10px">（填好后，去脚本卡 ⋯ → 🗂 分组里选它即可）</div>'
+      + '<button class="btn ghost wide" data-act="cancelAct">关闭</button>';
     sheet(h);
   }
 

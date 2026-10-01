@@ -288,7 +288,8 @@ assets/www/                   界面（index.html / app.js / style.css）
 | v2.4.0 | 节点查找增强（viewId / 正则 / desc） |
 | v2.5.0 | 三态运行：暂停 / 恢复 + `RunState` |
 | v2.6.0 | JS 模式补齐 + 子脚本传参 |
-| v4.4.0（当前） | 全面重绘对齐液态玻璃原型：大标题页头 + 权限就绪卡 + 编辑器三件套（ed-top·统计胶囊·底部动作坞）+ 卡片高光斑，六主题跟随；实测 177,560 B |
+| v4.5.0（当前） | 脚本页重排对齐新布局：搜索置顶 + 侧栏「自定义分组 / 按应用」双段 + 脚本卡重绘（大图标 · 大字名 · 副信息 · ▶/⋯ 保留）；修掉动作坞遮挡动作行；实测 177,560 B |
+| v4.4.0 | 全面重绘对齐液态玻璃原型：大标题页头 + 权限就绪卡 + 编辑器三件套（ed-top·统计胶囊·底部动作坞）+ 卡片高光斑，六主题跟随；实测 177,560 B |
 | v4.3.0 | 录制三态弹层：准备 → 录制中（红点脉冲 + 计时 + 已记录 N 个动作实时轮询）→ 停止落列表；拖拽排序实证钉住；实测 173,464 B |
 | v4.2.0 | 弹窗流重做：添加动作「常用大行 + 六组网格」+ 动作表单通用/高级两段 + 屏幕预览拾取（点按回填坐标，滑动双 pin+连线）；实测 173,464 B |
 | v4.1.0 | 坐标指示器（圆=点击 / 方框=长按 / 连线=滑动，带步骤序号）+ 防检测落点偏移（±N px 随机）；实测 169,368 B |
@@ -303,8 +304,8 @@ assets/www/                   界面（index.html / app.js / style.css）
 
 ```bash
 export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-tools/34.0.0
-./build.sh 4.4.0 27                       # 参数：版本名 版本码
-# 产出 out/LazyTap-v4.4.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
+./build.sh 4.5.0 28                       # 参数：版本名 版本码
+# 产出 out/LazyTap-v4.5.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
 ```
 
 > 无网络时也能构建：整条流水线只依赖本地 Android SDK 和 JDK，不下载任何依赖。
@@ -332,8 +333,8 @@ KS_ALIAS=mykey KS_PASS=xxx KEY_PASS=xxx ./build.sh 2.2.0 14
 ### 跑测试
 
 ```bash
-bash tools/test/run-tests.sh      # 纯 Java 单测 656 项，只要装了 JDK 就能跑，不需要模拟器
-cd tools/smoke && npm i && node run.js   # UI 冒烟 20 套、203 张截图，需要 chromium（各套件单独跑：node v36.js 等）
+bash tools/test/run-tests.sh      # 纯 Java 单测 663 项，只要装了 JDK 就能跑，不需要模拟器
+cd tools/smoke && npm i && node run.js   # UI 冒烟 20 套、207 张截图，需要 chromium（各套件单独跑：node v36.js 等）
 ```
 
 ---
@@ -343,7 +344,7 @@ cd tools/smoke && npm i && node run.js   # UI 冒烟 20 套、203 张截图，�
 **已验证**
 
 - 二十六版 APK 均通过 `apksigner verify`，`aapt2 dump badging` 显示包名、版本、权限、组件声明正确
-- **纯 Java 单测 656 项**（19 个测试类逐类实测），零 Android 依赖，CI 里每次提交都跑：
+- **纯 Java 单测 663 项**（19 个测试类逐类实测），零 Android 依赖，CI 里每次提交都跑：
   条件语义（and/or/count、8 种条件类型、重复检查、参数夹取、停止中断、日志明细）、
   分享码往返（含 v2.0.0 新增的嵌套 `cs` 数组、中文/emoji/JS 代码、脏数据与坏码容错）、
   动作分组四种跑法（v2.1.0）、**运行日志行**（级别夹取 / 关键词兜底分级 / 时间格式 / JSON 序列化，v2.2.0）、
@@ -378,7 +379,9 @@ cd tools/smoke && npm i && node run.js   # UI 冒烟 20 套、203 张截图，�
   表单两段路由（segbar/ADV_F/fstd/fadv）与屏幕预览拾取（pvBoxHtml/pvPick/pvSyncLine）必须在线；
   v4.3.0 起顺带钉住录制三态（sheetRec 两态同渲染 / recTick 计时 / recPoll 实时轮询 / recGo·recStopBtn 接线）
   与拖拽排序（startDrag 三件套 + 脚本库、动作时间线两个列表的拖柄），少一件都会变红；
-  v4.4.0 起顺带钉住原型重绘结构件（pageHead/permCard/estSec/ed-top/statline/dock 两钮/hl 高光斑））、
+  v4.4.0 起顺带钉住原型重绘结构件（pageHead/permCard/estSec/ed-top/statline/dock 两钮/hl 高光斑）；
+  v4.5.0 起顺带钉住脚本页重排结构件（searchTop 置顶搜索 / 侧栏「自定义分组·按应用」两段 / catNewBtn 新建入口 /
+  sheetCatMgr 分组管理弹层 / scriptCard 卡片重绘 + ▶·⋯ 保留））、
   **防检测随机**（v4.1.0：偏移 ±N 两万次采样全部在界内且覆盖两端、max≤0 与 rnd 为空恒返回 0
   ——关掉防检测必须分毫不差、区间颠倒自动纠正、min==max 直接返回、负下限夹 0、
   大区间不溢出，全部真采样验证）

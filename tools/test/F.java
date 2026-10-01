@@ -168,7 +168,7 @@ public class F {
         // 应用内的「更新日志」曾经停更在 v1.4.0，后面七个版本用户都看不到。
         // 这里钉一条：发新版时必须同步 app.js 里的 CHANGELOG 第一条。
         String top = firstVer(js);
-        ok("应用内更新日志的第一条就是当前版本", "4.4.0".equals(top), "现在是 " + top);
+        ok("应用内更新日志的第一条就是当前版本", "4.5.0".equals(top), "现在是 " + top);
 
         // v4.1.0 坐标指示器 + 防检测偏移：曾是本版主菜，改引擎时别把接线删了——
         // 点击类四兄弟必须亮准星，swipe 必须亮连线，落点必须过 Rnd.offset
@@ -242,6 +242,17 @@ public class F {
         ok("底部动作坞（d1 录制 + d2 加动作）",
                 js.contains("class=\"dock\"") && js.contains("data-tab=\"record\"") && js.contains("data-act=\"addAct\""));
         ok("卡片高光斑（hl 注入）", js.contains("class=\"hl\""));
+
+        // v4.5.0 脚本页重排：搜索置顶 + 侧栏双段 + 卡片重绘（对齐新版布局）。
+        // 搜索必须排在页头之后（结构顺序），侧栏两段标题 + 新建入口缺一不可
+        ok("顶部搜索（searchTop）", js.contains("function searchTop") && js.contains("class=\"search top\""));
+        ok("侧栏「自定义分组」段", js.contains("自定义分组"));
+        ok("侧栏「按应用」段（占位）", js.contains("按应用") && js.contains("function catByApp"));
+        ok("侧栏「＋ 新建/管理」入口", js.contains("function catNewBtn") && js.contains("data-act=\"newCat\""));
+        ok("分组管理弹层（sheetCatMgr）", js.contains("function sheetCatMgr") && js.contains("case 'catGo'"));
+        ok("脚本卡重绘（scriptCard + sitem）", js.contains("function scriptCard") && js.contains("item sitem"));
+        ok("脚本页保留 ▶/⋯ 操作钮",
+                js.contains("data-act=\"run\"") && js.contains("data-act=\"more\""));
 
         System.out.println(fails == 0 ? "  —— 全通过" : "  —— 失败 " + fails + " 项");
         if (fails > 0) System.exit(1);
