@@ -411,3 +411,61 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
 /* v2.1.0 动作分组：列表里分组行加个内缩标记，一眼看出这是能展开的 */
 .item.grouped{border-left:3px solid var(--acc)}
 .item.grouped .ic{box-shadow:0 4px 14px rgba(255,138,61,.26)}
+
+/* ---------- v4.2.0 弹窗流重做 ---------- */
+/* 组标题：小号加宽字距 + 右侧渐隐线 */
+.grp-t{font-size:12px;font-weight:800;letter-spacing:.14em;color:var(--sub);
+  margin:15px 2px 9px;display:flex;align-items:center;gap:8px}
+.grp-t::after{content:'';flex:1;height:1px;
+  background:linear-gradient(90deg,rgba(255,255,255,.14),transparent)}
+.grp-t.sub{font-size:11px;margin:11px 2px 7px;color:var(--sub)}
+/* 常用动作：单列大行 */
+.qk{display:flex;align-items:center;gap:12px;padding:13px 4px;font-size:14.5px;font-weight:650;
+  cursor:pointer;border-bottom:1px solid var(--line)}
+.qk:last-of-type{border-bottom:none}
+.qk:active{background:var(--glass2)}
+.qk .qe{font-size:18px;filter:drop-shadow(0 3px 6px rgba(0,0,0,.4))}
+.qk .qa{margin-left:auto;color:var(--sub);font-size:13px}
+/* 全部动作：4 列组网格 */
+.tgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.titem{border-radius:14px;padding:11px 4px 9px;text-align:center;cursor:pointer;
+  border:1px solid var(--line);background:var(--glass3);
+  transition:transform .14s cubic-bezier(.34,1.56,.64,1),background .14s}
+.titem:active{transform:scale(.94);background:var(--glass2)}
+.titem .te{font-size:21px;display:block;filter:drop-shadow(0 3px 6px rgba(0,0,0,.4))}
+.titem .tn{font-size:11px;color:var(--ink);margin-top:5px;display:block;white-space:nowrap}
+/* 表单两段切换 chips（区别于编辑页 .seg button 版） */
+.segbar{display:flex;gap:8px;margin:0 0 10px}
+.segbar .sg{padding:8px 14px;border-radius:99px;font-size:12.5px;cursor:pointer;
+  border:1px solid var(--line);background:var(--glass3);color:var(--sub);font-weight:650;transition:.18s}
+.segbar .sg.on{color:#04222b;border-color:transparent;
+  background:linear-gradient(135deg,var(--brand3),var(--brand2));
+  box-shadow:0 5px 16px rgba(var(--glow),.3)}
+/* 屏幕预览拾取盒：网格假屏 + 序号 pin + swipe 连线 */
+.pvbox{position:relative;height:96px;border-radius:15px;overflow:hidden;cursor:crosshair;
+  margin:2px 0 10px;border:1px solid var(--stroke);
+  background:linear-gradient(160deg,#10141f,#0b101c)}
+.pv-grid{position:absolute;inset:0;background-image:
+  linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);
+  background-size:24px 24px}
+.pv-tag{position:absolute;left:9px;top:7px;font-size:9.5px;letter-spacing:.14em;color:var(--sub);z-index:2}
+.pvseg{position:absolute;right:7px;top:6px;display:flex;gap:5px;z-index:3}
+.pvopt{padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:700;
+  border:1px solid var(--line);background:var(--glass3);color:var(--sub)}
+.pvopt.on{color:#04222b;border-color:transparent;
+  background:linear-gradient(135deg,var(--brand3),var(--brand2))}
+.pvline{position:absolute;height:2.5px;border-radius:3px;z-index:4;transform-origin:0 50%;
+  background:linear-gradient(90deg,rgba(94,234,212,.75),rgba(167,139,250,.85));
+  box-shadow:0 0 8px rgba(94,234,212,.4)}
+.pvpin{position:absolute;width:26px;height:26px;border-radius:50%;z-index:5;
+  transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;
+  font-size:11.5px;font-weight:800;color:#042f2a;
+  background:radial-gradient(circle at 30% 26%,#ccfbf1,#2dd4bf 70%,#14b8a6);
+  box-shadow:0 0 0 3px rgba(45,212,191,.18),0 5px 13px rgba(2,10,20,.55),inset 0 1px 0 rgba(255,255,255,.7);
+  animation:pinIn .45s cubic-bezier(.34,1.4,.5,1)}
+.pvpin.e{width:22px;height:22px;font-size:10.5px;color:#1e1b4b;border-radius:9px;
+  background:radial-gradient(circle at 30% 26%,#e0e7ff,#a78bfa 70%,#8b5cf6);
+  box-shadow:0 0 0 3px rgba(167,139,250,.18),0 5px 13px rgba(2,10,20,.55),inset 0 1px 0 rgba(255,255,255,.7)}
+@keyframes pinIn{from{transform:translate(-50%,-50%) scale(.3);opacity:0}
+  to{transform:translate(-50%,-50%) scale(1);opacity:1}}

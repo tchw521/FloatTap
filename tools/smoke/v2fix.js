@@ -47,7 +47,7 @@ fs.mkdirSync(OUT, { recursive: true });
     await page.evaluate(() => { const b = document.querySelector('button[data-act="addAct"]'); if (b) b.click(); });
     await wait(380);
     await page.evaluate(n => {
-      const e = [...document.querySelectorAll('#sheet .tile')].find(x => x.textContent.includes(n));
+      const e = [...document.querySelectorAll('#sheet .titem')].find(x => x.textContent.includes(n));
       if (e) e.click();
     }, name);
     await wait(380);

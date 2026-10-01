@@ -170,7 +170,7 @@ const RUNS2 = [
   await goScripts();
   await clickSel('[data-act="edit"]', '跳广告');
   await clickSel('[data-act="addAct"]', '加动作');
-  await clickSel('#sheet .tile', '找文字(图)');
+  await clickSel('#sheet .titem', '找文字(图)');
   await wait(400);
   const selOk = await evalOf(() => {
     const s = document.querySelector('#sheet [data-field="ttpl"]');
@@ -185,7 +185,7 @@ const RUNS2 = [
 
   // 5. 多任务四动作 + 插入变量 {{g.名字}}
   await clickSel('[data-act="addAct"]', '加动作');
-  await clickSel('#sheet .tile', '写共享变量');
+  await clickSel('#sheet .titem', '写共享变量');
   await fill('#sheet [data-field="v"]', '88');
   await clickSel('[data-act="insVar"]', '插入变量');
   await wait(300);
@@ -200,18 +200,18 @@ const RUNS2 = [
   await want('共享变量 score = 88', 'globalSet 摘要');
 
   await clickSel('[data-act="addAct"]', '加动作');
-  await clickSel('#sheet .tile', '读共享变量');
+  await clickSel('#sheet .titem', '读共享变量');
   await clickSel('#sheet .btn', '保存');
   await want('共享变量 score → 本道 score', 'globalGet 摘要（to 空回退同名）');
 
   await clickSel('[data-act="addAct"]', '加动作');
-  await clickSel('#sheet .tile', '拿互斥锁');
+  await clickSel('#sheet .titem', '拿互斥锁');
   await fill('#sheet [data-field="name"]', '签到锁');
   await clickSel('#sheet .btn', '保存');
   await want('拿锁「签到锁」最多等 5000ms，拿到跳下一步 / 没拿到跳收工', 'lock 摘要');
 
   await clickSel('[data-act="addAct"]', '加动作');
-  await clickSel('#sheet .tile', '放互斥锁');
+  await clickSel('#sheet .titem', '放互斥锁');
   await fill('#sheet [data-field="name"]', '签到锁');
   await clickSel('#sheet .btn', '保存');
   await want('放锁「签到锁」', 'unlock 摘要');
@@ -222,7 +222,7 @@ const RUNS2 = [
   await goScripts();
   await clickSel('[data-act="edit"]', '每天签到');
   await clickSel('[data-act="addAct"]', '加动作');
-  await clickSel('#sheet .tile', '条件判断');
+  await clickSel('#sheet .titem', '条件判断');
   await wait(400);
   await clickSel('.row .btn', '屏幕上有字模');     // 完整匹配——「屏幕上有字」不带「模」
   await wait(400);

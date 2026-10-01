@@ -67,7 +67,7 @@ fs.mkdirSync(OUT, { recursive: true });
   await shot('02-addact-cond');
 
   // 3. 选它，进条件表单
-  await clickText('#sheet .tile', '条件判断');
+  await clickText('#sheet .titem', '条件判断');
   await wait(400);
   await want('满足模式', '条件表单');
   await want('条件清单', '条件表单');

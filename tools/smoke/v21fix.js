@@ -61,7 +61,7 @@ const EVIL = [{
     document.querySelector('button[data-act="addAct"]').click();
   });
   await wait(420);
-  await inSheet('.tile', '条件判断');          // 动作类型是 .tile
+  await inSheet('.titem', '条件判断');          // 动作类型是 .titem
   const hasRep = await page.evaluate(() => !!document.querySelector('#sheet [data-field="rep"]'));
   if (!hasRep) errs.push('条件表单里没有「重复检查」开关');
   await page.evaluate(() => {

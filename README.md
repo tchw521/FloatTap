@@ -193,7 +193,7 @@ App 不在前台也生效，重启后自动重排；同一条规则 8 秒冷却�
 
 ## 三、怎么用（安装后 60 秒上手）
 
-1. 安装 APK（用 `adb install LazyTap-v4.1.0.apk` 或传到手机点开安装）。
+1. 安装 APK（用 `adb install LazyTap-v4.2.0.apk` 或传到手机点开安装）。
 2. 打开 App → **第一次会自动弹权限引导**（主卡下方也有常驻引导卡，没给齐一直显示）：
    - **开启无障碍服务**：点「① 开无障碍服务」跳系统设置 → 找到「懒人点击器」→ 打开。
    - **授权悬浮窗**：点「② 授权悬浮窗」→ 允许「显示在其他应用上层」。
@@ -288,7 +288,8 @@ assets/www/                   界面（index.html / app.js / style.css）
 | v2.4.0 | 节点查找增强（viewId / 正则 / desc） |
 | v2.5.0 | 三态运行：暂停 / 恢复 + `RunState` |
 | v2.6.0 | JS 模式补齐 + 子脚本传参 |
-| v4.1.0（当前） | 坐标指示器（圆=点击 / 方框=长按 / 连线=滑动，带步骤序号）+ 防检测落点偏移（±N px 随机）；实测 169,368 B |
+| v4.2.0（当前） | 弹窗流重做：添加动作「常用大行 + 六组网格」+ 动作表单通用/高级两段 + 屏幕预览拾取（点按回填坐标，滑动双 pin+连线）；实测 173,464 B |
+| v4.1.0 | 坐标指示器（圆=点击 / 方框=长按 / 连线=滑动，带步骤序号）+ 防检测落点偏移（±N px 随机）；实测 169,368 B |
 | v4.0.0 | 液态玻璃整装重设计（半透明玻璃材质 + 柔和光影）+ 底栏中央制作键 ✦ + 分组侧栏 + 左右滑动切页 |
 | v3.2.0 | 权限强引导（首启弹层 + 常驻卡 + 无障碍假死检测）+ 六家 ROM 白名单路径 |
 | v3.1.0 | 伪 OCR（文字模板 / 找文字(图) / 多尺度）+ 多任务深化（共享变量 / 互斥锁）；实测 161,176 B |
@@ -300,8 +301,8 @@ assets/www/                   界面（index.html / app.js / style.css）
 
 ```bash
 export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-tools/34.0.0
-./build.sh 4.1.0 24                       # 参数：版本名 版本码
-# 产出 out/LazyTap-v4.1.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
+./build.sh 4.2.0 25                       # 参数：版本名 版本码
+# 产出 out/LazyTap-v4.2.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
 ```
 
 > 无网络时也能构建：整条流水线只依赖本地 Android SDK 和 JDK，不下载任何依赖。
@@ -329,8 +330,8 @@ KS_ALIAS=mykey KS_PASS=xxx KEY_PASS=xxx ./build.sh 2.2.0 14
 ### 跑测试
 
 ```bash
-bash tools/test/run-tests.sh      # 纯 Java 单测 627 项，只要装了 JDK 就能跑，不需要模拟器
-cd tools/smoke && npm i && node run.js   # UI 冒烟 17 套、190 张截图，需要 chromium（各套件单独跑：node v33.js 等）
+bash tools/test/run-tests.sh      # 纯 Java 单测 639 项，只要装了 JDK 就能跑，不需要模拟器
+cd tools/smoke && npm i && node run.js   # UI 冒烟 18 套、194 张截图，需要 chromium（各套件单独跑：node v34.js 等）
 ```
 
 ---
@@ -339,8 +340,8 @@ cd tools/smoke && npm i && node run.js   # UI 冒烟 17 套、190 张截图，�
 
 **已验证**
 
-- 二十三版 APK 均通过 `apksigner verify`，`aapt2 dump badging` 显示包名、版本、权限、组件声明正确
-- **纯 Java 单测 627 项**（19 个测试类逐类实测），零 Android 依赖，CI 里每次提交都跑：
+- 二十四版 APK 均通过 `apksigner verify`，`aapt2 dump badging` 显示包名、版本、权限、组件声明正确
+- **纯 Java 单测 639 项**（19 个测试类逐类实测），零 Android 依赖，CI 里每次提交都跑：
   条件语义（and/or/count、8 种条件类型、重复检查、参数夹取、停止中断、日志明细）、
   分享码往返（含 v2.0.0 新增的嵌套 `cs` 数组、中文/emoji/JS 代码、脏数据与坏码容错）、
   动作分组四种跑法（v2.1.0）、**运行日志行**（级别夹取 / 关键词兜底分级 / 时间格式 / JSON 序列化，v2.2.0）、
@@ -370,7 +371,9 @@ cd tools/smoke && npm i && node run.js   # UI 冒烟 17 套、190 张截图，�
   **字段对账**（v2.3.0：直接读 `app.js` 与 `ScriptRunner.java`，抓「表单能填但引擎不读」和
   「引擎在读但表单没入口」两类静默失效 —— `clickable` / `step` / `timeout` 就是这么揪出来的；
   v4.1.0 起顺带钉住版本号同步与指示器接线：点击类必须 `Pins.show`、滑动必须 `Pins.showSwipe`、
-  落点必须过 `Rnd.offset`、收工必须 `Pins.hide`，改引擎时删掉任何一件都会变红）、
+  落点必须过 `Rnd.offset`、收工必须 `Pins.hide`，改引擎时删掉任何一件都会变红；
+  v4.2.0 起顺带钉住弹窗流：`ACT_GROUPS` 必须覆盖 TYPES 全部 27 个动作（漏一个动作就没人能加）、
+  表单两段路由（segbar/ADV_F/fstd/fadv）与屏幕预览拾取（pvBoxHtml/pvPick/pvSyncLine）必须在线）、
   **防检测随机**（v4.1.0：偏移 ±N 两万次采样全部在界内且覆盖两端、max≤0 与 rnd 为空恒返回 0
   ——关掉防检测必须分毫不差、区间颠倒自动纠正、min==max 直接返回、负下限夹 0、
   大区间不溢出，全部真采样验证）

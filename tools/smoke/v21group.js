@@ -48,7 +48,7 @@ fs.mkdirSync(OUT, { recursive: true });
   await page.evaluate(() => document.querySelector('button[data-act="addAct"]').click());
   await wait(420);
   await want('动作分组', '加动作弹层');
-  await inSheet('.tile', '动作分组');
+  await inSheet('.titem', '动作分组');
   await want('怎么跑', '分组表单');
   await shot('01-group-form');
 
@@ -85,7 +85,7 @@ fs.mkdirSync(OUT, { recursive: true });
   for (const kind of ['点击', '滑动']) {
     await page.evaluate(() => document.querySelector('button[data-act="addAct"]').click());
     await wait(400);
-    await inSheet('.tile', kind);
+    await inSheet('.titem', kind);
     await inSheet('.btn', '保存');
   }
   const list2 = await stored();

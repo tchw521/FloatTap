@@ -168,7 +168,7 @@ public class F {
         // 应用内的「更新日志」曾经停更在 v1.4.0，后面七个版本用户都看不到。
         // 这里钉一条：发新版时必须同步 app.js 里的 CHANGELOG 第一条。
         String top = firstVer(js);
-        ok("应用内更新日志的第一条就是当前版本", "4.1.0".equals(top), "现在是 " + top);
+        ok("应用内更新日志的第一条就是当前版本", "4.2.0".equals(top), "现在是 " + top);
 
         // v4.1.0 坐标指示器 + 防检测偏移：曾是本版主菜，改引擎时别把接线删了——
         // 点击类四兄弟必须亮准星，swipe 必须亮连线，落点必须过 Rnd.offset
@@ -184,6 +184,35 @@ public class F {
                 Pattern.compile("^\\s*x1 \\+= Rnd\\.offset\\(", Pattern.MULTILINE).matcher(swipeCase).find());
         ok("收工收指示器（stop 里 Pins.hide）",
                 methodBlock(src, "public void stop()").contains("Pins.hide()"));
+
+        // v4.2.0 弹窗流重做：常用段 + 分组网格 + 通用/高级两段 + 屏幕预览拾取。
+        // 分组网格要是漏了哪个动作，那个动作就没人能加了——这里钉死 ACT_GROUPS 必须覆盖 TYPES 全部键
+        Matcher mq = Pattern.compile("var ACT_QUICK\\s*=\\s*\\[([^\\]]*)\\]").matcher(js);
+        ok("常用段定义存在（ACT_QUICK）", mq.find());
+        Matcher mgr = Pattern.compile("var ACT_GROUPS\\s*=\\s*\\[(.*?)\\];", Pattern.DOTALL).matcher(js);
+        boolean hasGrp = mgr.find();
+        ok("分组定义存在（ACT_GROUPS）", hasGrp);
+        if (hasGrp) {
+            Set<String> grpKeys = new LinkedHashSet<>();
+            Matcher mk = Pattern.compile("'([a-zA-Z]+)'").matcher(mgr.group(1));
+            while (mk.find()) grpKeys.add(mk.group(1));
+            Set<String> missing = new LinkedHashSet<>(form.keySet());
+            missing.removeAll(grpKeys);
+            ok("分组网格覆盖 TYPES 全部动作（一个不落）", missing.isEmpty(), "缺: " + missing);
+            ok("常用段动作都真实存在", grpKeys.containsAll(set("click", "swipe", "double", "long", "wait", "launch"))
+                    && form.keySet().containsAll(grpKeys));
+        }
+        String addM = block(js, js.indexOf("function sheetAddAct"));
+        ok("添加弹层用上常用段大行（qk）", addM.contains("ACT_QUICK") && addM.contains("qk"));
+        ok("添加弹层用上分组网格（tgrid）", addM.contains("ACT_GROUPS") && addM.contains("titem"));
+        String editM = block(js, js.indexOf("function sheetEditAct"));
+        ok("动作表单两段切换（segbar + formTab）", editM.contains("segbar") && editM.contains("formTab"));
+        ok("高级段路由（ADV_F）且通用段不空转", editM.contains("ADV_F") && editM.contains("fstd") && editM.contains("fadv"));
+        ok("表单带屏幕预览拾取盒（pvBoxHtml）", editM.contains("pvBoxHtml"));
+        ok("预览拾取回填坐标输入框（data-field）",
+                block(js, js.indexOf("function pvPick")).contains("data-field"));
+        ok("swipe 预览画起终点连线（pvSyncLine）", js.contains("function pvSyncLine"));
+        ok("打开弹层时补画预览连线", block(js, js.indexOf("function sheet(")).contains("pvSyncLine"));
 
         System.out.println(fails == 0 ? "  —— 全通过" : "  —— 失败 " + fails + " 项");
         if (fails > 0) System.exit(1);

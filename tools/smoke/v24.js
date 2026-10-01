@@ -25,7 +25,11 @@ fs.mkdirSync(OUT, { recursive: true });
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const shot = n => page.screenshot({ path: `${OUT}/v24-${n}.png` });
   const want = async (txt, at) => {
-    const ok = await page.evaluate(t => document.body.innerText.includes(t), txt);
+    const ok = await page.evaluate(t => {
+      if (document.body.innerText.includes(t)) return true;
+      const s = document.getElementById('sheet');   // v4.2.0 高级段默认隐藏但字段仍在表单里
+      return !!(s && s.textContent.includes(t));
+    }, txt);
     if (!ok) errs.push(at + ' 里找不到「' + txt + '」');
   };
   const stored = () => page.evaluate(() => JSON.parse(window.app.scripts())[0].actions);
@@ -35,7 +39,7 @@ fs.mkdirSync(OUT, { recursive: true });
     await page.evaluate(() => document.querySelector('button[data-act="addAct"]').click());
     await wait(420);
     const ok = await page.evaluate(t => {
-      const e = [...document.querySelectorAll('#sheet .tile')].find(x => (x.textContent || '').includes(t));
+      const e = [...document.querySelectorAll('#sheet .titem')].find(x => (x.textContent || '').includes(t));
       if (e) { e.click(); return true; }
       return false;
     }, tile);

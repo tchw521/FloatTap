@@ -174,6 +174,22 @@
   };
   var ICONS = ['📜', '⚡', '🎮', '📺', '🎁', '⏭', '🔨', '🫧', '💰', '🎯', '🍚', '🚀', '❤️', '🧹', '📲', '⏰'];
 
+  // ---------- v4.2.0 弹窗流重做 ----------
+  // 「添加动作」弹层：顶部常用单列大行 + 全部动作按组 4 列网格。
+  // 组定义只存 key，名称/emoji 一律引用 TYPES —— 单一数据源，分组漏了哪个动作 F.java 会变红。
+  var ACT_QUICK = ['click', 'swipe', 'double', 'long', 'wait', 'launch'];
+  var ACT_GROUPS = [
+    ['点按', ['click', 'double', 'long', 'random']],
+    ['手势', ['swipe', 'multi']],
+    ['查找与识别', ['find', 'findImage', 'findText', 'findColor', 'cmpColor']],
+    ['流程控制', ['if', 'cond', 'wait', 'count', 'group', 'runSub', 'cmpVar']],
+    ['输入与应用', ['text', 'launch', 'key']],
+    ['变量与数据', ['set', 'math', 'globalSet', 'globalGet', 'lock', 'unlock']]
+  ];
+  // 动作表单「高级设置」段的字段路由（通用段放高频核心字段，收窄/容错/跳转收进高级）。
+  // 只是呈现分组 —— TYPES 的 f/def 一字不动，字段对账零风险。
+  var ADV_F = { go: 1, els: 1, rx: 1, ry: 1, rw: 1, rh: 1, step: 1, zoom: 1, timeout: 1, index: 1, desc: 1, id: 1, re: 1, clickable: 1 };
+
   /** v2.4.0：找节点的附加条件（描述 / id / 正则），find 和 if 的摘要都用它 */
   function actTail(a) {
     return (a.desc ? '·描述「' + a.desc + '」' : '') + (a.id ? '·id「' + a.id + '」' : '')
@@ -970,6 +986,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.2.0</div><b>弹窗流重做</b>。「加动作」换新面孔：顶部是<b>常用</b>单列大行（点击／滑动／双击／长按／等待／开应用，一步直达），下面「全部动作」按<b>六组</b>排开（点按／手势／查找与识别／流程控制／输入与应用／变量与数据），27 个动作一个不落。动作表单拆成<b>通用 / 高级</b>两段：常用参数在前，跳转步号、识别收窄（描述／id／正则）、区域与超时、重复次数这些收进「高级设置」，不再一屏糊到底。点击类动作的表单顶部多了<b>屏幕预览</b>：直接在缩略屏上点一下就能拾取坐标，指示器跟着落点走，滑动是起点→终点两枚 pin 加连线（右上角「起点／终点」切换拾取目标）；「🎯 屏幕截图取点」照旧在高级设置里，两个入口并存。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.1.0</div><b>坐标指示器 + 防检测偏移</b>。脚本跑起来，屏幕上能「看见」每一步了：点击／双击／随机点亮<b>青色圆形准星</b>、长按亮<b>琥珀方框</b>、滑动亮<b>紫色连线</b>，中心带步骤序号，走到哪亮到哪——指示器浮层不挡任何操作，手指和脚本都照常落在下面的 App（设置里可关）。新增<b>落点偏移</b>：每次点击在 ±N 像素内随机偏一点（默认 5px，0=关），配合原有的动作间隔 ±25% 抖动，连续点击不再走同一条直线，更像人手。两处都在「我的 → 设置 → 指示器与防检测」。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.0.0</div><b>液态玻璃整装重设计</b>。整套界面换了视觉底座：<b>深色液态玻璃</b>——半透明材质、顶部高光描边、内外双层光影，背景三团环境光斑把「通透」做足；默认配色换成<b>水色</b>（原来的六种都还在，「我的 → 设置」随便换）。底部导航正中多了 <b>✦ 制作</b>键，任何页面一步直达「挑模板」新建，原来右下角的小加号退休。脚本库支持<b>分组</b>：脚本 → ⋯ → 分组/移动，起个组名（挂机、签到随你），列表左侧会出现<b>分组侧栏</b>，点组名即筛、带计数徽章。主页面之间支持<b>左右滑动切换</b>（弹层开着时不抢手势，纵向滚动不受影响）。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v3.2.0</div><b>权限强引导 + 主流手机适配</b>。有用户反馈「第一次打开没人提醒要开权限」——确实：提醒以前是两行小字，一晃就过去了。现在<b>第一次打开自动弹引导</b>（一步一按钮直达系统设置），主卡下也常驻<b>权限引导卡</b>，没给齐一直显示、给齐自动消失；按手机品牌给出对应的<b>白名单路径</b>（小米要开「后台弹出界面」、华为要改「应用启动管理」、OPPO/vivo 要放电池限制——不开放着权限浮层也拉不出来）。顺手修两处：部分手机回收无障碍服务后界面还挂着假「已开」；悬浮窗没授权时脚本跑了但浮层没影、也不说原因——现在会落一条日志明说。',
@@ -999,6 +1016,8 @@
   function sheet(html) {
     $('#sheet').innerHTML = html;
     $('#modal').classList.remove('hidden');
+    // v4.2.0：动作表单带预览拾取盒时，等一帧布局完成再画 swipe 起终点连线
+    if (document.getElementById('pvLine')) setTimeout(pvSyncLine, 50);
   }
   function closeSheet() { $('#modal').classList.add('hidden'); }
   window.__back = function () {
@@ -1415,12 +1434,146 @@
 
   // ---------- 动作编辑 ----------
   function sheetAddAct() {
-    var h = '<h3>加一个动作</h3><div class="grid">';
-    for (var k in TYPES) {
-      h += '<div class="tile" data-act="pickType" data-t="' + k + '"><div class="e">' + TYPES[k].e
-        + '</div><div class="n">' + TYPES[k].n + '</div></div>';
+    // v4.2.0 弹窗流重做：顶部「常用」单列大行（对齐竞品「选择要添加的功能」），
+    // 下面「全部动作」按组铺满——27 个动作一个不落，只是把老的三列平铺换成了组网格
+    var h = '<h3>添加动作</h3><div class="grp-t">常用</div>';
+    for (var i = 0; i < ACT_QUICK.length; i++) {
+      var t = TYPES[ACT_QUICK[i]];
+      h += '<div class="qk" data-act="pickType" data-t="' + ACT_QUICK[i] + '">'
+        + '<span class="qe">' + t.e + '</span>' + t.n + '<span class="qa">›</span></div>';
     }
-    return h + '</div><button class="btn ghost wide" style="margin-top:12px" data-act="cancelAct">取消</button>';
+    h += '<div class="grp-t" style="margin-top:16px">全部动作</div>';
+    for (var g = 0; g < ACT_GROUPS.length; g++) {
+      h += '<div class="grp-t sub">' + ACT_GROUPS[g][0] + '</div><div class="tgrid">';
+      var items = ACT_GROUPS[g][1];
+      for (var j = 0; j < items.length; j++) {
+        var t2 = TYPES[items[j]];
+        h += '<div class="titem" data-act="pickType" data-t="' + items[j] + '">'
+          + '<span class="te">' + t2.e + '</span><span class="tn">' + t2.n + '</span></div>';
+      }
+      h += '</div>';
+    }
+    return h
+      + '<div class="tiny" style="margin-top:12px">常用动作在顶部直接点；模板坐标用百分比，换机型也不跑偏，进去再微调即可。</div>'
+      + '<button class="btn ghost wide" style="margin-top:10px" data-act="cancelAct">取消</button>';
+  }
+
+  /** 单个字段的输入控件（v4.2.0 从 sheetEditAct 拆出来：通用/高级两段共用同一套渲染，规则一字不改） */
+  function actFieldHtml(a, key, label, kind) {
+    var h = '';
+    if (kind === 'switch') {
+      h += '<div class="kv"><span>' + label + '</span>' + '<div class="switch ' + (a[key] ? 'on' : '') + '" data-field="' + key + '"><i></i></div></div>';
+    } else if (kind === 'color') {
+      h += '<label class="f"><span>' + label + '</span>'
+        + '<span class="row" style="gap:8px"><span class="swatch" style="background:' + esc(a[key] || '#000') + '" data-swatch="' + key + '"></span>'
+        + '<input data-field="' + key + '" type="text" value="' + esc(a[key] == null ? '' : a[key]) + '" class="grow"></span></label>'
+        + '<button class="btn ghost wide" style="margin:0 0 4px" data-act="pickColor" data-field-for="' + key + '">🎨 截图取色</button>';
+    } else if (kind === 'var' || kind === 'expr') {
+      h += '<label class="f"><span>' + label + '</span>'
+        + '<input data-field="' + key + '" type="text" value="' + esc(a[key] == null ? '' : a[key]) + '"></label>'
+        + '<div class="row" style="margin:-4px 0 6px;gap:6px">'
+        + '<button class="btn sm ghost" data-act="insVar" data-field-for="' + key + '">🧩 插入变量</button>'
+        + (kind === 'expr' ? '<button class="btn sm ghost" data-act="tryExpr" data-field-for="' + key + '">= 试算</button>' : '')
+        + '</div>';
+    } else if (kind && kind.indexOf('sel:') === 0) {
+      var optKey = kind.slice(4);
+      // v2.6.0：sel:scripts 是动态清单——从脚本列表现取。
+      // 排除自己（自调用死循环）和 JS 脚本（当不了子脚本，引擎会拒）
+      var opts = optKey === 'scripts'
+        ? (S.scripts || []).filter(function (x) { return x.id !== S.editId && x.kind !== 'js'; })
+            .map(function (x) { return [x.name, x.name]; })
+        : (OPTS[optKey] || []);
+      h += '<label class="f"><span>' + label + '</span><select data-field="' + key + '">'
+        + '<option value=""' + (!a[key] ? ' selected' : '') + '>（选一个）</option>';
+      for (var z = 0; z < opts.length; z++) {
+        h += '<option value="' + esc(opts[z][0]) + '"' + (String(a[key]) === String(opts[z][0]) ? ' selected' : '') + '>' + esc(opts[z][1]) + '</option>';
+      }
+      h += '</select></label>';
+      if (optKey === 'tpls') {
+        if (!opts.length) h += '<div class="tiny" style="margin:-4px 0 6px">还没有模板图，先去「设置 → 图色模板」截一张存起来。</div>';
+        else h += '<button class="btn ghost wide" style="margin:0 0 4px" data-act="goTpl">🖼 管理模板图</button>';
+      }
+      if (optKey === 'ttpls') {
+        if (!opts.length || !opts[0][0]) h += '<div class="tiny" style="margin:-4px 0 6px">还没有字模，先去「我的 → 文字模板」截图框一个字存起来。</div>';
+        else h += '<button class="btn ghost wide" style="margin:0 0 4px" data-act="mineGo" data-k="ttpl">🔠 管理文字模板</button>';
+      }
+      if (optKey === 'scripts' && !opts.length) {
+        h += '<div class="tiny" style="margin:-4px 0 6px">还没有别的动作脚本（JS 脚本当不了子脚本），先回脚本页新建一个。</div>';
+      }
+    } else if (kind === 'key') {
+      h += '<label class="f"><span>' + label + '</span><select data-field="' + key + '">';
+      for (var q = 0; q < KEYS.length; q++) {
+        var kv = KEYS[q].split(':');
+        h += '<option value="' + kv[0] + '"' + (a[key] === kv[0] ? ' selected' : '') + '>' + kv[1] + '</option>';
+      }
+      h += '</select></label>';
+    } else {
+      h += '<label class="f"><span>' + label + '</span><input data-field="' + key + '" type="' + (kind === 'text' ? 'text' : 'number') + '" value="' + esc(a[key] == null ? '' : a[key]) + '"></label>';
+    }
+    return h;
+  }
+
+  /** v4.2.0 屏幕预览拾取盒：网格假屏 + 序号 pin（swipe 是双 pin + 连线），点按回填坐标 */
+  function pvBoxHtml(a) {
+    var isSwipe = a.t === 'swipe';
+    var h = '<div class="pvbox" data-act="pvPick"><div class="pv-grid"></div>'
+      + '<div class="pv-tag">屏幕预览 · 点按拾取坐标</div>';
+    if (isSwipe) {
+      h += '<div class="pvseg"><span class="pvopt on" data-act="pvTarget" data-v="p1">起点</span>'
+        + '<span class="pvopt" data-act="pvTarget" data-v="p2">终点</span></div>'
+        + '<div class="pvline" id="pvLine"></div>'
+        + '<div class="pvpin" id="pvPin1" style="left:' + pvPos(a.x1 == null ? 50 : a.x1) + '%;top:' + pvPos(a.y1 == null ? 70 : a.y1) + '%"><span>1</span></div>'
+        + '<div class="pvpin e" id="pvPin2" style="left:' + pvPos(a.x2 == null ? 50 : a.x2) + '%;top:' + pvPos(a.y2 == null ? 30 : a.y2) + '%"><span>2</span></div>';
+    } else {
+      h += '<div class="pvpin" id="pvPin1" style="left:' + pvPos(a.x == null ? 50 : a.x) + '%;top:' + pvPos(a.y == null ? 50 : a.y) + '%"><span>1</span></div>';
+    }
+    return h + '</div>';
+  }
+
+  /** 预览屏的 pin 落点：坐标可能是百分比也可能是像素，粗略夹到 3~97% 别画出界 */
+  function pvPos(v) {
+    v = +v || 0;
+    if (v > 100 || v < 0) v = v / 10;
+    return Math.max(3, Math.min(97, v));
+  }
+
+  /** v4.2.0 起终点连线：按 pin 的百分比位置算像素线段（弹层未布局时 clientWidth=0 直接跳过） */
+  function pvSyncLine() {
+    var p1 = document.getElementById('pvPin1'), p2 = document.getElementById('pvPin2'), ln = document.getElementById('pvLine');
+    if (!p1 || !p2 || !ln || !ln.parentElement) return;
+    var bw = ln.parentElement.clientWidth, bh = ln.parentElement.clientHeight;
+    if (!bw || !bh) return;
+    var x1 = (parseFloat(p1.style.left) || 50) / 100 * bw, y1 = (parseFloat(p1.style.top) || 50) / 100 * bh;
+    var x2 = (parseFloat(p2.style.left) || 50) / 100 * bw, y2 = (parseFloat(p2.style.top) || 50) / 100 * bh;
+    ln.style.left = x1 + 'px'; ln.style.top = y1 + 'px';
+    ln.style.width = Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)) + 'px';
+    ln.style.transform = 'rotate(' + Math.atan2(y2 - y1, x2 - x1) + 'rad)';
+  }
+
+  /** v4.2.0 预览屏点按拾取：算百分比 → 按当前目标对回填 input → pin 跟着落点走 */
+  function pvPick(e) {
+    var box = document.querySelector('#sheet .pvbox');
+    if (!box) return;
+    var r = box.getBoundingClientRect();
+    var x = Math.max(0, Math.min(100, Math.round((e.clientX - r.left) / r.width * 1000) / 10));
+    var y = Math.max(0, Math.min(100, Math.round((e.clientY - r.top) / r.height * 1000) / 10));
+    // 百分比开关关着就换算成像素（跟截屏取点 usePoint 同一套算法）
+    var psw = document.querySelector('#sheet [data-field="pct"]');
+    var pctOn = !psw || psw.classList.contains('on');
+    var w = (S.st.screen && S.st.screen.w) || 1080, hh = (S.st.screen && S.st.screen.h) || 1920;
+    var vx = pctOn ? x : Math.round(x / 100 * w);
+    var vy = pctOn ? y : Math.round(y / 100 * hh);
+    var p2 = (box.dataset.tgt || 'p1') === 'p2';
+    var map = p2 ? [['x2', vx], ['y2', vy]]
+      : (document.querySelector('#sheet [data-field="x"]') ? [['x', vx], ['y', vy]] : [['x1', vx], ['y1', vy]]);
+    for (var i = 0; i < map.length; i++) {
+      var inp = document.querySelector('#sheet [data-field="' + map[i][0] + '"]');
+      if (inp) inp.value = map[i][1];
+    }
+    var pin = document.getElementById(p2 ? 'pvPin2' : 'pvPin1');
+    if (pin) { pin.style.left = x + '%'; pin.style.top = y + '%'; }
+    pvSyncLine();
+    toast('已拾取 (' + vx + ', ' + vy + (pctOn ? '%' : 'px') + ')');
   }
 
   function sheetEditAct(i) {
@@ -1431,68 +1584,40 @@
     S.editAct = i;
     var t = TYPES[a.t] || { n: a.t, e: '❔', f: [] };
     if (a.t === 'cond') return condActForm(a, i);   // 条件动作有专门的表单
-    var h = '<h3>' + t.e + ' ' + t.n + '</h3>';
+
+    // v4.2.0 弹窗流重做：字段按 ADV_F 拆「通用 / 高级」两段，两段同时渲染、seg 纯 display
+    // 切换 —— 输入值不会丢，保存时照旧全量收集（#sheet [data-field]）。
+    var hStd = '', hAdv = '';
+    // 坐标类动作（有 x/x1 点坐标的）顶部放屏幕预览拾取；找色/找图那类是区域字段，不适用
+    var hasXY = false;
+    for (var j0 = 0; j0 < t.f.length; j0++) {
+      if (t.f[j0][0] === 'x' || t.f[j0][0] === 'x1') { hasXY = true; break; }
+    }
+    if (t.c && hasXY) hStd += pvBoxHtml(a);
     for (var j = 0; j < t.f.length; j++) {
-      var key = t.f[j][0], label = t.f[j][1], kind = t.f[j][2];
-      if (kind === 'switch') {
-        h += '<div class="kv"><span>' + label + '</span>' + '<div class="switch ' + (a[key] ? 'on' : '') + '" data-field="' + key + '"><i></i></div></div>';
-      } else if (kind === 'color') {
-        h += '<label class="f"><span>' + label + '</span>'
-          + '<span class="row" style="gap:8px"><span class="swatch" style="background:' + esc(a[key] || '#000') + '" data-swatch="' + key + '"></span>'
-          + '<input data-field="' + key + '" type="text" value="' + esc(a[key] == null ? '' : a[key]) + '" class="grow"></span></label>'
-          + '<button class="btn ghost wide" style="margin:0 0 4px" data-act="pickColor" data-field-for="' + key + '">🎨 截图取色</button>';
-      } else if (kind === 'var' || kind === 'expr') {
-        h += '<label class="f"><span>' + label + '</span>'
-          + '<input data-field="' + key + '" type="text" value="' + esc(a[key] == null ? '' : a[key]) + '"></label>'
-          + '<div class="row" style="margin:-4px 0 6px;gap:6px">'
-          + '<button class="btn sm ghost" data-act="insVar" data-field-for="' + key + '">🧩 插入变量</button>'
-          + (kind === 'expr' ? '<button class="btn sm ghost" data-act="tryExpr" data-field-for="' + key + '">= 试算</button>' : '')
-          + '</div>';
-      } else if (kind && kind.indexOf('sel:') === 0) {
-        var optKey = kind.slice(4);
-        // v2.6.0：sel:scripts 是动态清单——从脚本列表现取。
-        // 排除自己（自调用死循环）和 JS 脚本（当不了子脚本，引擎会拒）
-        var opts = optKey === 'scripts'
-          ? (S.scripts || []).filter(function (x) { return x.id !== S.editId && x.kind !== 'js'; })
-              .map(function (x) { return [x.name, x.name]; })
-          : (OPTS[optKey] || []);
-        h += '<label class="f"><span>' + label + '</span><select data-field="' + key + '">'
-          + '<option value=""' + (!a[key] ? ' selected' : '') + '>（选一个）</option>';
-        for (var z = 0; z < opts.length; z++) {
-          h += '<option value="' + esc(opts[z][0]) + '"' + (String(a[key]) === String(opts[z][0]) ? ' selected' : '') + '>' + esc(opts[z][1]) + '</option>';
-        }
-        h += '</select></label>';
-        if (optKey === 'tpls') {
-          if (!opts.length) h += '<div class="tiny" style="margin:-4px 0 6px">还没有模板图，先去「设置 → 图色模板」截一张存起来。</div>';
-          else h += '<button class="btn ghost wide" style="margin:0 0 4px" data-act="goTpl">🖼 管理模板图</button>';
-        }
-        if (optKey === 'ttpls') {
-          if (!opts.length || !opts[0][0]) h += '<div class="tiny" style="margin:-4px 0 6px">还没有字模，先去「我的 → 文字模板」截图框一个字存起来。</div>';
-          else h += '<button class="btn ghost wide" style="margin:0 0 4px" data-act="mineGo" data-k="ttpl">🔠 管理文字模板</button>';
-        }
-        if (optKey === 'scripts' && !opts.length) {
-          h += '<div class="tiny" style="margin:-4px 0 6px">还没有别的动作脚本（JS 脚本当不了子脚本），先回脚本页新建一个。</div>';
-        }
-      } else if (kind === 'key') {
-        h += '<label class="f"><span>' + label + '</span><select data-field="' + key + '">';
-        for (var q = 0; q < KEYS.length; q++) {
-          var kv = KEYS[q].split(':');
-          h += '<option value="' + kv[0] + '"' + (a[key] === kv[0] ? ' selected' : '') + '>' + kv[1] + '</option>';
-        }
-        h += '</select></label>';
-      } else {
-        h += '<label class="f"><span>' + label + '</span><input data-field="' + key + '" type="' + (kind === 'text' ? 'text' : 'number') + '" value="' + esc(a[key] == null ? '' : a[key]) + '"></label>';
-      }
+      var html = actFieldHtml(a, t.f[j][0], t.f[j][1], t.f[j][2]);
+      if (ADV_F[t.f[j][0]]) hAdv += html; else hStd += html;
     }
-    h += '<label class="f"><span>这个动作重复几次（省得复制粘贴）</span><input data-field="repeat" type="number" value="' + (a.repeat || 1) + '"></label>';
+    if (hStd.indexOf('<div class="pvbox"') < 0 && hStd.indexOf('<label class="f"') < 0 && hStd.indexOf('<div class="kv"') < 0) {
+      hStd += '<div class="tiny" style="padding:6px 2px">这类动作没有常用参数，都在高级设置里。</div>';
+    }
+    // 高级段：重复次数 + 百分比坐标 + 截屏取点（原表单尾部的老三样收进来）
+    hAdv += '<label class="f"><span>这个动作重复几次（省得复制粘贴）</span><input data-field="repeat" type="number" value="' + (a.repeat || 1) + '"></label>';
     if (t.c) {
-      h += '<div class="kv"><span>用百分比坐标（换机型不跑偏）</span><div class="switch ' + (a.pct ? 'on' : '') + '" data-field="pct"><i></i></div></div>';
-      h += '<button class="btn ghost wide" style="margin-top:10px" data-act="pickPoint" data-i="' + i + '">🎯 在屏幕图上取点</button>';
+      hAdv += '<div class="kv"><span>用百分比坐标（换机型不跑偏）</span><div class="switch ' + (a.pct ? 'on' : '') + '" data-field="pct"><i></i></div></div>';
+      hAdv += '<button class="btn ghost wide" style="margin-top:10px" data-act="pickPoint" data-i="' + i + '">🎯 在屏幕截图上取点</button>';
+    } else {
+      hAdv += '<div class="tiny" style="padding:8px 2px">这一类动作没有屏幕坐标，无需拾取点位。</div>';
     }
-    h += '<div class="row" style="margin-top:14px">'
+
+    return '<h3>' + t.e + ' ' + t.n + '</h3>'
+      + '<div class="segbar"><div class="sg on" data-act="formTab" data-v="std">通用设置</div>'
+      + '<div class="sg" data-act="formTab" data-v="adv">高级设置</div></div>'
+      + '<div id="fstd">' + hStd + '</div>'
+      + '<div id="fadv" style="display:none">' + hAdv + '</div>'
+      + '<div class="row" style="margin-top:14px">'
       + '<button class="btn ghost grow" data-act="cancelAct">取消</button>'
       + '<button class="btn ok grow" data-act="saveAct" data-i="' + i + '">保存</button></div>';
-    return h;
   }
 
   // ---------- 条件判断动作的表单（v2.0.0） ----------
@@ -2105,6 +2230,26 @@
         S.scripts.unshift(c); saveScripts(); closeSheet(); render();
         break;
       case 'addAct': sheet(sheetAddAct()); break;
+      // v4.2.0 弹窗流：表单两段切换 / 预览屏拾取 / swipe 起终点切换
+      case 'formTab': {
+        var sgs = document.querySelectorAll('#sheet .segbar .sg');
+        for (var q4 = 0; q4 < sgs.length; q4++) sgs[q4].classList.toggle('on', sgs[q4] === el);
+        var advOn = el.dataset.v === 'adv';
+        var dStd = document.getElementById('fstd'), dAdv = document.getElementById('fadv');
+        if (dStd) dStd.style.display = advOn ? 'none' : '';
+        if (dAdv) dAdv.style.display = advOn ? '' : 'none';
+        break;
+      }
+      case 'pvPick': pvPick(e); break;
+      case 'pvTarget': {
+        var pb = document.querySelector('#sheet .pvbox');
+        if (pb) {
+          pb.dataset.tgt = el.dataset.v;
+          var pvo = pb.querySelectorAll('.pvopt');
+          for (var q5 = 0; q5 < pvo.length; q5++) pvo[q5].classList.toggle('on', pvo[q5] === el);
+        }
+        break;
+      }
       case 'pickTpl': useTemplate(+el.dataset.i); break;
       case 'newJs': newJsScript(); break;
       case 'market': S.tab = 'market'; S.editId = null; render(); break;
