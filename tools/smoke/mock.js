@@ -91,22 +91,33 @@ const MOCK_SRC = `() => {
         : (runs.length > 0 && runs.every(r => r.state === 'paused'));
       const vl = runs.map(r => ({ runId: r.runId, name: r.name,
         vars: [{ k: 'n', v: '2' }, { k: 'gap', v: '1000' }] }));
+      // v3.2.0：acc/overlay/linked/manufacturer 可开关驱动（不设开关 = 全开 + 真 linked，
+      // 与旧冒烟零回归）；linked 假死态 = acc 开但服务实例没连上
+      const acc = window.__mockAcc !== undefined ? !!window.__mockAcc : true;
       return JSON.stringify({
         running: running, paused: paused,
         current: first ? first.id : (window.__mockRunning ? 'a1' : ''),
         runName: first ? first.name : (window.__mockRunning ? '每天签到' : ''),
         prog: first && first.total > 0 ? (first.prog + '/' + first.total) : '',
-        acc: true, overlay: true,
+        acc: acc, overlay: window.__mockOverlay !== undefined ? !!window.__mockOverlay : true,
+        linked: window.__mockLinked !== undefined ? !!window.__mockLinked : acc,
+        manufacturer: window.__mockBrand || 'generic',
         recording: true, touch: true, ball: true, log: logs, screen: { w: 1080, h: 1920 },
         vars: [{ k: 'n', v: '2' }, { k: 'gap', v: '1000' }],
         varsList: vl, js: !!window.__mockJs,
         runs: runs
       });
     },
-    prefs: () => JSON.stringify({ ballSize: 54, ballAlpha: 0.88, speed: 1, mode: 'normal',
+    // v3.2.0：prefs/savePrefs 真合并——savePrefs 存进 __mockPrefsObj，prefs 回读，
+    // 冒烟里能验证「guideShown 存了 → reload 后引导不二弹」的完整闭环
+    prefs: () => JSON.stringify(Object.assign({ ballSize: 54, ballAlpha: 0.88, speed: 1, mode: 'normal',
       vibrate: true, boot: false, theme: 'orange', lastScript: 'a1',
-      autoRecordDelay: true, touchRecord: true, recordingOn: true }),
-    savePrefs: () => 'ok',
+      autoRecordDelay: true, touchRecord: true, recordingOn: true }, window.__mockPrefsObj || {})),
+    savePrefs: j => {
+      window.__lastPrefs = j;
+      try { window.__mockPrefsObj = Object.assign(window.__mockPrefsObj || {}, JSON.parse(j)); } catch (e) {}
+      return 'ok';
+    },
     info: () => JSON.stringify({ version: '1.6.0', code: 8, sdk: 34, abi: 'arm64-v8a' }),
     recording: () => JSON.stringify([
       { t: 'click', x: 540, y: 1180, d: 420, note: '触点' },
