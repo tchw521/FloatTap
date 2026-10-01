@@ -113,9 +113,19 @@
     findColor: { n: '找色', e: '🎨', c: 1, f: [['c', '目标颜色', 'color'], ['sim', '相似度 %'], ['step', '采样间隔(越大越快,≥2)'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['timeout', '没找到就再等 ms（0=不等）'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { c: '#FF6B35', sim: 95, step: 2, timeout: 0, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300, pct: 1 }, pct: ['rx', 'ry', 'rw', 'rh'] },
     cmpColor: { n: '比色', e: '🌈', f: [['x', 'X 坐标'], ['y', 'Y 坐标'], ['c', '期望颜色', 'color'], ['sim', '相似度 %'], ['go', '颜色对 → 跳到第几步'], ['els', '不对 → 跳到第几步'], ['d', '之后等待 ms']], def: { x: 50, y: 50, c: '#FFFFFF', sim: 95, go: 0, els: 0, d: 200 } },
     findImage: { n: '找图', e: '🖼', c: 1, f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['timeout', '没找到就再等 ms（0=不等）'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { tpl: '', sim: 90, timeout: 0, rx: 0, ry: 0, rw: 100, rh: 100, click: true, go: 0, els: 0, d: 300, pct: 1 }, pct: ['rx', 'ry', 'rw', 'rh'] },
+    // v3.1.0 伪 OCR：找文字(图)。模板选「文字模板」（跟找图的模板图分开管）。
+    // 注意：JS 脚本里的 findText() 函数是按控件文字找节点（t:'find'），跟这个动作不同体系
+    findText: { n: '找文字(图)', e: '🔠', c: 1, f: [['ttpl', '文字模板', 'sel:ttpls'], ['sim', '相似度 %'], ['zoom', '多尺度(0=关,1=三档缩放)'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高'], ['click', '找到就点它', 'switch'], ['timeout', '没找到就再等 ms（0=不等）'], ['go', '找到 → 跳到第几步'], ['els', '没找到 → 跳到第几步'], ['d', '之后等待 ms']], def: { ttpl: '', sim: 85, zoom: 0, rx: 0, ry: 0, rw: 100, rh: 100, click: true, timeout: 0, go: 0, els: 0, d: 300, pct: 1 }, pct: ['rx', 'ry', 'rw', 'rh'] },
     set: { n: '赋值', e: '📝', f: [['k', '变量名', 'text'], ['v', '值（可写 {{变量}}）', 'var'], ['d', '之后等待 ms']], def: { k: 'n', v: '', d: 100 } },
     math: { n: '运算', e: '🧮', f: [['k', '存到哪个变量', 'text'], ['e', '算式（不用加 {{}}）', 'expr'], ['d', '之后等待 ms']], def: { k: 'n', e: 'n+1', d: 100 } },
     cmpVar: { n: '比变量', e: '⚖️', f: [['l', '左边', 'var'], ['op', '怎么比', 'sel:cmpop'], ['r', '右边', 'var'], ['go', '成立 → 跳到第几步'], ['els', '不成立 → 跳到第几步'], ['d', '之后等待 ms']], def: { l: 'n', op: '>=', r: '3', go: 0, els: 0, d: 100 } },
+    // v3.1.0 多任务深化：跨脚本共享变量 + 互斥锁。
+    // 共享变量的读不用专门指令——任何字段里直接写 {{g.名字}}；
+    // 互斥锁收尾自动释放（脚本停了锁就没了），不怕死锁
+    globalSet: { n: '写共享变量', e: '🌐', f: [['k', '名字（不用写 g. 前缀）', 'text'], ['v', '值（可写 {{变量}}）', 'var'], ['d', '之后等待 ms']], def: { k: 'score', v: '', d: 100 } },
+    globalGet: { n: '读共享变量', e: '📥', f: [['k', '名字（不用写 g. 前缀）', 'text'], ['to', '存到本道变量（不填=同名）', 'text'], ['d', '之后等待 ms']], def: { k: 'score', to: '', d: 100 } },
+    lock: { n: '拿互斥锁', e: '🔒', f: [['name', '锁名（同名互斥）', 'text'], ['timeout', '最多等 ms（0=不等）'], ['go', '拿到 → 跳到第几步'], ['els', '没拿到 → 跳到第几步（不填=收工）'], ['d', '之后等待 ms']], def: { name: '', timeout: 5000, go: 0, els: -1, d: 100 } },
+    unlock: { n: '放互斥锁', e: '🔓', f: [['name', '锁名', 'text'], ['d', '之后等待 ms']], def: { name: '', d: 100 } },
     cond: { n: '条件判断', e: '🧠', f: [['go', '全部/满足 → 跳到第几步'], ['els', '不满足 → 跳到第几步'], ['d', '之后等待 ms']], def: { mode: 0, n: 1, cs: [], rep: 0, repGap: 800, repMax: 10, go: 0, els: 0, d: 100 } },
     // 分组：把一批动作装一起，指定怎么跑。子动作不走步号跳转，但「收工」「重来一轮」会往上传
     group: { n: '动作分组', e: '🗂', f: [['name', '分组名（给自己看的）', 'text'], ['mode', '怎么跑', 'sel:gmode'], ['d', '之后等待 ms']], def: { name: '', mode: 0, acts: [], d: 100 } },
@@ -134,6 +144,8 @@
     // 关掉的话会被当成 100×100 像素，找色只在左上角一小块里搜，看着像「永远找不到」
     color: { n: '屏幕上有颜色', e: '🎨', f: [['c', '颜色', 'color'], ['sim', '相似度 %'], ['step', '采样间隔(越大越快,≥2)'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { c: '#FF6B35', sim: 95, step: 2, rx: 0, ry: 0, rw: 100, rh: 100, pct: 1 }, pct: 1, sum: function (c) { return '有 ' + (c.c || ''); } },
     image: { n: '屏幕上有图', e: '🖼', f: [['tpl', '模板图', 'sel:tpls'], ['sim', '相似度 %'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { tpl: '', sim: 90, rx: 0, ry: 0, rw: 100, rh: 100, pct: 1 }, pct: 1, sum: function (c) { return '有图「' + (c.tpl || '未选') + '」'; } },
+    // v3.1.0 伪 OCR：屏上有这个字模。键名 ttext——"text" 已被控件找字占用
+    ttext: { n: '屏幕上有字模', e: '🔠', f: [['ttpl', '文字模板', 'sel:ttpls'], ['sim', '相似度 %'], ['zoom', '多尺度(0=关,1=三档缩放)'], ['rx', '区域左上 X'], ['ry', '区域左上 Y'], ['rw', '区域宽'], ['rh', '区域高']], def: { ttpl: '', sim: 85, zoom: 0, rx: 0, ry: 0, rw: 100, rh: 100, pct: 1 }, pct: 1, sum: function (c) { return '有字模「' + (c.ttpl || '未选') + '」'; } },
     time: { n: '到了某个时间', e: '⏰', f: [['v', '时间点，如 09:00', 'text']], def: { v: '09:00' }, sum: function (c) { return '过了 ' + (c.v || ''); } },
     rand: { n: '随机概率', e: '🎲', f: [['v', '成立的概率 %']], def: { v: 50 }, sum: function (c) { return '随机 ' + (c.v || 0) + '%'; } },
     expr: { n: '表达式成立', e: '🧮', f: [['v', '算式，算出来是 1 就算成立', 'expr']], def: { v: 'n>2' }, sum: function (c) { return c.v || ''; } },
@@ -196,6 +208,14 @@
         + '%，对跳' + jumpTxt(a.go) + ' / 不对跳' + jumpTxt(a.els);
       case 'findImage': return '找图「' + (a.tpl || '未选') + '」像≥' + (a.sim || 90) + '%'
         + (a.click ? ' 并点击' : '') + '，找到跳' + jumpTxt(a.go) + ' / 没找到跳' + jumpTxt(a.els);
+      case 'findText': return '找字模「' + (a.ttpl || '未选') + '」像≥' + (a.sim || 85) + '%'
+        + (a.zoom ? ' ·多尺度' : '') + (a.click ? ' 并点击' : '')
+        + '，找到跳' + jumpTxt(a.go) + ' / 没找到跳' + jumpTxt(a.els);
+      case 'globalSet': return '共享变量 ' + (a.k || '?') + ' = ' + (a.v === '' ? '（空）' : a.v);
+      case 'globalGet': return '共享变量 ' + (a.k || '?') + ' → 本道 ' + (a.to || a.k || '?');
+      case 'lock': return '拿锁「' + (a.name || '?') + '」最多等 ' + (a.timeout || 0)
+        + 'ms，拿到跳' + jumpTxt(a.go) + ' / 没拿到跳' + jumpTxt(a.els);
+      case 'unlock': return '放锁「' + (a.name || '?') + '」';
       case 'set': return (a.k || '?') + ' = ' + (a.v === '' ? '（空）' : a.v);
       case 'math': return (a.k || '?') + ' = ' + (a.e || '');
       case 'cmpVar': return '若 ' + (a.l || '0') + ' ' + (CMP_OP[a.op] || a.op) + ' ' + (a.r || '0')
@@ -287,7 +307,7 @@
       page.innerHTML = s ? viewEditor(s) : '';
     } else if (S.tab === 'mine') {
       var sub = S.sub && ({
-        log: viewLog, trig: viewTriggers, settings: viewSettings, about: viewAbout
+        log: viewLog, trig: viewTriggers, ttpl: viewTextTpls, settings: viewSettings, about: viewAbout
       })[S.sub];
       page.innerHTML = (S.sub ? subBar() : '') + (sub ? sub() : viewMine());
     } else {
@@ -622,6 +642,7 @@
   var MINE = [
     { k: 'log', e: '🧾', n: '运行日志', d: '看看刚才到底干了啥', tone: 5 },
     { k: 'trig', e: '⚡', n: '自动触发', d: '定时、通知、插电、解锁时自动跑', tone: 1 },
+    { k: 'ttpl', e: '🔠', n: '文字模板', d: '伪 OCR：截屏框个字存字模，「找文字(图)」认它', tone: 6 },
     { k: 'settings', e: '⚙️', n: '设置', d: '悬浮球、主题、循环与防检测抖动', tone: 4 },
     { k: 'about', e: '💡', n: '关于', d: '版本说明与更新日志', tone: 3 }
   ];
@@ -854,6 +875,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v3.1.0</div><b>伪 OCR + 多任务深化</b>。新增「我的 → <b>文字模板</b>」：截屏框一个字存成字模，动作「<b>找文字(图)</b>」和条件「屏幕上有字模」就能认出屏幕上的这个字并点它——无障碍找不到的字（图片里的、游戏里的）也有办法了；支持<b>多尺度</b>（屏幕上的字大一号小一号也能认）、区域限定与超时轮询，命中坐标照常记进 {{lastX}}/{{lastY}}。新增<b>共享变量</b>：globalSet／globalGet 读写，任何脚本任何字段里直接写 {{g.名字}} 就能互传消息；新增<b>互斥锁</b>：lock／unlock 同名锁全局互斥，「同一时刻只许一个脚本动这个界面」一条动作搞定，锁可重入、带超时，脚本停了锁自动释放。JS 脚本同步支持 gset／gget／glock／gunlock。顺手修：「设置 → 图色识别 → 模板图」里的「截图框一块存模板」按钮因事件撞名一直点不动，本版修复。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v3.0.0</div><b>真·多任务并行</b>来了：最多同时跑 <b>3 条脚本</b>（2 条动作 + 1 条 JS），互不抢场、日志各记各的（#编号 徽标分清是谁写的）。跑第二个脚本不再把第一个踢掉——会话满了会明说「先停一个再跑」；定时触发器撞上满员会跳过这一轮并记条日志，不再抢占。运行大卡升级成<b>会话列表</b>：每条会话带 #编号，单独暂停／停止（JS 会话不支持暂停，老约定）；脚本列表里谁在跑一眼全亮；变量页按会话分组看数。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.7.0</div>多任务基建（还不是真并行，为下版打底）：日志每行带上<b>#编号</b>，标出是第几次跑写的——两脚本交替跑也不串；悬浮条最多能同屏 <b>3 条</b>，各自显示进度和暂停键，JS 脚本也显示真实脚本名了；音量键急停、状态面板改走结构化消息。界面看着变化不大，底下把「正在跑什么」从单例字段换成了可多开的「运行会话」记账。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.6.0</div>动作列表新增<b>子脚本</b>：把常用流程单独存成一个脚本，别的脚本里一条动作就能调它，还能<b>传参</b>（填 JSON，如 {"n":1}，子脚本里用 {{n}} 引用）；子脚本里写的变量跑完还在，父脚本接着就能读，算它的回值。子脚本里的「收工／重来」只结束子脚本、不带走父脚本；套娃最多 5 层，A 调 B、B 调 A 的死循环进不来。JS 脚本也补齐了查找：<b>tapText／hasText</b> 支持控件 id、内容描述、正则选项，新增 <b>findText</b>（只找不点，立刻回坐标）、<b>waitText</b>（等文字出现再往下走）、<b>runSub</b>（JS 里也能调子脚本）。找文字／找色／找图命中后坐标都会记进 {{lastX}}／{{lastY}}。',
@@ -1127,6 +1149,10 @@
     ['cmpColor(x,y,颜色)', '某点颜色对不对 → true/false'],
     ['setVar(名, 值)', '存变量'],
     ['getVar(名)', '取变量'],
+    ['gset(名, 值)', '写共享变量（v3.1.0）：别的脚本用 gget 或 {{g.名字}} 读'],
+    ['gget(名)', '读共享变量'],
+    ['glock(锁名, 最多等ms)', '拿互斥锁 → true/false；同名锁全局互斥，脚本结束自动放'],
+    ['gunlock(锁名)', '放互斥锁'],
     ['count(名)', '计数器加一，返回当前值'],
     ['rand(a, b)', '随机数'],
     ['screen()', '屏幕尺寸 {w, h}'],
@@ -1342,6 +1368,10 @@
           if (!opts.length) h += '<div class="tiny" style="margin:-4px 0 6px">还没有模板图，先去「设置 → 图色模板」截一张存起来。</div>';
           else h += '<button class="btn ghost wide" style="margin:0 0 4px" data-act="goTpl">🖼 管理模板图</button>';
         }
+        if (optKey === 'ttpls') {
+          if (!opts.length || !opts[0][0]) h += '<div class="tiny" style="margin:-4px 0 6px">还没有字模，先去「我的 → 文字模板」截图框一个字存起来。</div>';
+          else h += '<button class="btn ghost wide" style="margin:0 0 4px" data-act="mineGo" data-k="ttpl">🔠 管理文字模板</button>';
+        }
         if (optKey === 'scripts' && !opts.length) {
           h += '<div class="tiny" style="margin:-4px 0 6px">还没有别的动作脚本（JS 脚本当不了子脚本），先回脚本页新建一个。</div>';
         }
@@ -1464,6 +1494,9 @@
         if (optKey === 'tpls') {
           if (!opts.length) h += '<div class="tiny" style="margin:-4px 0 6px">还没有模板图，先去「设置 → 图色模板」截一张存起来。</div>';
           else h += '<button class="btn ghost wide" style="margin:0 0 4px" data-act="goTpl">🖼 管理模板图</button>';
+        }
+        if (optKey === 'ttpls' && (!opts.length || !opts[0][0])) {
+          h += '<div class="tiny" style="margin:-4px 0 6px">还没有字模，先去「我的 → 文字模板」截图框一个字存起来。</div>';
         }
       } else {
         h += '<label class="f"><span>' + label + '</span><input data-cfield="' + key + '" type="' + (kind === 'text' ? 'text' : 'number') + '" value="' + esc(c[key] == null ? '' : c[key]) + '"></label>';
@@ -1726,11 +1759,12 @@
   // ---------- 截图取色 / 取图 ----------
   function shotPanel(mode) {
     var st = S.st || {}, sc = st.screen || {};
-    return '<h3>' + (mode === 'tpl' ? '🖼 框一块区域存成模板图' : '🎨 点一下取这个点的颜色') + '</h3>'
+    var isBox = mode === 'tpl' || mode === 'ttpl';
+    return '<h3>' + (mode === 'ttpl' ? '🔠 框一个字存成文字模板' : isBox ? '🖼 框一块区域存成模板图' : '🎨 点一下取这个点的颜色') + '</h3>'
       + (S.shot ? '' : '<div class="tiny">还没拿到截图</div>')
       + '<div class="pick"><canvas id="sc" width="' + (sc.w || 1080) + '" height="' + (sc.h || 1920) + '"></canvas></div>'
       + '<div class="row" style="margin-top:8px"><div class="grow muted" id="sv">'
-      + (mode === 'tpl' ? '点第一下定左上角，再点一下定右下角' : '还没取色') + '</div></div>'
+      + (isBox ? '点第一下定左上角，再点一下定右下角' : '还没取色') + '</div></div>'
       + '<div class="row" style="margin-top:8px">'
       + '<button class="btn ghost grow" data-act="shotRefresh">重新截图</button>'
       + '<button class="btn ghost grow" data-act="cancelAct">关闭</button></div>';
@@ -1755,7 +1789,7 @@
       var r = cv.getBoundingClientRect();
       var x = Math.round((e.clientX - r.left) / r.width * cv.width);
       var y = Math.round((e.clientY - r.top) / r.height * cv.height);
-      if (mode === 'tpl') {
+      if (mode === 'tpl' || mode === 'ttpl') {
         if (!rect || (rect.x1 != null)) { rect = { x0: x, y0: y, x1: null, y1: null }; }
         else { rect.x1 = x; rect.y1 = y; }
         draw();
@@ -1786,12 +1820,13 @@
 
   function sheetTplSave() {
     var p = S.pick || {};
-    return '<h3>存成模板图</h3>'
-      + '<label class="f"><span>名字</span><input id="tplName" type="text" placeholder="比如 跳过按钮"></label>'
+    var isTT = p.mode === 'ttpl';
+    return '<h3>' + (isTT ? '存成文字模板' : '存成模板图') + '</h3>'
+      + '<label class="f"><span>名字</span><input id="tplName" type="text" placeholder="' + (isTT ? '比如 确认按钮' : '比如 跳过按钮') + '"></label>'
       + '<div class="tiny">区域：' + p.x + ',' + p.y + ' 尺寸 ' + p.w + '×' + p.h + '</div>'
       + '<div class="row" style="margin-top:12px">'
       + '<button class="btn ghost grow" data-act="cancelAct">取消</button>'
-      + '<button class="btn ok grow" data-act="tplSaveGo">保存</button></div>';
+      + '<button class="btn ok grow" data-act="' + (isTT ? 'ttplSaveGo' : 'tplSaveGo') + '">保存</button></div>';
   }
 
   function viewTpls() {
@@ -1805,8 +1840,36 @@
           + '<button class="btn sm ghost" data-act="tplDel" data-v="' + esc(names[i]) + '">删除</button></div>';
       }
     }
-    h += '<button class="btn wide ok" style="margin-top:10px" data-act="pickTpl">' + (S.cap && S.cap.granted ? '📷 截图框一块存模板' : '🔑 先授权截屏') + '</button>';
+    // v3.1.0：act 从 pickTpl 改成 shotTpl——原来叫 pickTpl 会撞上模板库入口的事件分发，
+    // 「截图框一块存模板」按钮点了走的是 useTemplate，功能实际是坏的
+    h += '<button class="btn wide ok" style="margin-top:10px" data-act="shotTpl" data-mode="tpl">' + (S.cap && S.cap.granted ? '📷 截图框一块存模板' : '🔑 先授权截屏') + '</button>';
     return h + '<button class="btn ghost wide" style="margin-top:9px" data-act="cancelAct">关闭</button></div>';
+  }
+
+  /** 文字模板库（v3.1.0 伪 OCR）：截图框一个字存成字模，「找文字(图)」动作认它 */
+  function loadTextTpls() {
+    var arr = [];
+    try { arr = JSON.parse(call('listTextTpls') || '[]') || []; } catch (e) { arr = []; }
+    OPTS.ttpls = arr.map(function (n) { return [n, n]; });
+    if (!OPTS.ttpls.length) OPTS.ttpls = [['', '（还没有文字模板）']];
+  }
+
+  function viewTextTpls() {
+    loadTextTpls();
+    var names = OPTS.ttpls[0][0] ? OPTS.ttpls.map(function (x) { return x[0]; }) : [];
+    var h = '<div class="hero"><div class="hi">🔠 文字模板</div>'
+      + '<div class="ht">截屏框一个字存下来，脚本里「找文字(图)」就能认屏幕上的这个字</div></div>';
+    h += '<div class="card"><div class="sec">字模清单</div>';
+    if (!names.length) {
+      h += '<div class="muted">还没有字模。点下面截个屏，框住屏幕上的一个字（比如「签到」按钮上的字）存下来。</div>';
+    } else {
+      for (var i = 0; i < names.length; i++) {
+        h += '<div class="kv"><span>🔠 ' + esc(names[i]) + '</span>'
+          + '<button class="btn sm ghost" data-act="ttplDel" data-v="' + esc(names[i]) + '">删除</button></div>';
+      }
+    }
+    h += '<button class="btn wide ok" style="margin-top:10px" data-act="shotTpl" data-mode="ttpl">' + (S.cap && S.cap.granted ? '📷 截图框一个字存字模' : '🔑 先授权截屏') + '</button>';
+    return h + '<div class="tiny" style="margin-top:10px">字模跟图色模板是分开的两套：「找图」用图色模板，「找文字(图)」和条件「屏幕上有字模」用这里的。多尺度开关打开后，屏幕上的字大一号小一号也能认出来。</div></div>';
   }
 
   // ---------- 事件 ----------
@@ -2065,10 +2128,13 @@
         if (!S.shot && !loadShot()) break;
         sheet(shotPanel('color')); bindShotCanvas('color');
         break;
-      case 'pickTpl':
-        S.pick = { mode: 'tpl' };
+      // v3.1.0：原 case 'pickTpl' 改名 shotTpl——它跟模板库入口的 pickTpl（useTemplate）
+      // 在同一个 switch 里撞名，这个分支从来执行不到，「截图框一块存模板」一直是坏的
+      case 'shotTpl':
+        var shotMode = el.dataset.mode === 'ttpl' ? 'ttpl' : 'tpl';
+        S.pick = { mode: shotMode };
         if (!loadShot()) break;
-        sheet(shotPanel('tpl')); bindShotCanvas('tpl');
+        sheet(shotPanel(shotMode)); bindShotCanvas(shotMode);
         break;
       case 'goTpl': sheet(viewTpls()); break;
       case 'tplSaveGo':
@@ -2078,6 +2144,20 @@
         var pr = S.pick || {};
         ok(call('saveTpl', JSON.stringify({ name: nm, x: pr.x, y: pr.y, w: pr.w, h: pr.h })));
         closeSheet(); refreshAll(); sheet(viewTpls());
+        break;
+      case 'ttplSaveGo':
+        var tnm = (document.getElementById('tplName') || {}).value || '';
+        tnm = tnm.trim();
+        if (!tnm) { toast('起个名字'); break; }
+        var tpr = S.pick || {};
+        ok(call('saveTextTpl', JSON.stringify({ name: tnm, x: tpr.x, y: tpr.y, w: tpr.w, h: tpr.h })));
+        closeSheet(); refreshAll();
+        S.sub = 'ttpl'; render();   // 回到字模子页，列表要是新的
+        break;
+      case 'ttplDel':
+        ok(call('delTextTpl', el.dataset.v));
+        refreshAll();
+        S.sub = 'ttpl'; render();   // 字模库是「我的」子页，删完留在本页
         break;
       case 'tplDel': ok(call('delTpl', el.dataset.v)); refreshAll(); sheet(viewTpls()); break;
       case 'logRefresh': refreshAll(); break;
@@ -2396,6 +2476,7 @@
     S.cap = c;
     OPTS.tpls = (c.tpls || []).map(function (n) { return [n, n]; });
     if (!OPTS.tpls.length) OPTS.tpls = [['', '（还没有模板图）']];
+    loadTextTpls();   // v3.1.0：文字模板下拉同批就绪，findText/ttext 表单要用
   }
 
   function loadShot() {

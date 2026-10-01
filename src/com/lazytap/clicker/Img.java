@@ -3,30 +3,23 @@ package com.lazytap.clicker;
 import android.graphics.Bitmap;
 
 /**
- * 图色识别：找色 / 比色 / 找图。
+ * 图色识别：找色 / 比色 / 找图 / 找字。
  * 全部纯 Java 实现，不引第三方、不引模型，代价是几十毫秒级的搜索耗时，够用。
+ * v3.1.0：模板匹配的算法核心抽进了零依赖的 Match（能进单测），本类只做 Bitmap 门面——
+ * 转像素平面、转发匹配、多档缩放入口。
  */
 public final class Img {
-
-    /** 找图时单个像素的容差：隔了缩放和压缩，指望每个像素都一样不现实 */
-    private static final int PIXEL_SIM = 65;
 
     private Img() {
     }
 
-    /** 两个颜色的相似度：100 = 一模一样 */
+    /** 两个颜色的相似度：100 = 一模一样（实现在 Match，这里留着旧签名） */
     public static int colorSim(int a, int b) {
-        int dr = Math.abs(((a >> 16) & 255) - ((b >> 16) & 255));
-        int dg = Math.abs(((a >> 8) & 255) - ((b >> 8) & 255));
-        int db = Math.abs((a & 255) - (b & 255));
-        return 100 - (dr + dg + db) * 100 / 765;
+        return Match.colorSim(a, b);
     }
 
     public static int colorSim(int a, int r, int g, int b) {
-        int dr = Math.abs(((a >> 16) & 255) - r);
-        int dg = Math.abs(((a >> 8) & 255) - g);
-        int db = Math.abs((a & 255) - b);
-        return 100 - (dr + dg + db) * 100 / 765;
+        return Match.colorSim(a, r, g, b);
     }
 
     /** "#RRGGBB" / "#AARRGGBB" → 0xRRGGBB */
@@ -81,96 +74,27 @@ public final class Img {
 
     public static int[] findImage(Bitmap big, Bitmap small, int sim, int x0, int y0, int x1, int y1) {
         if (big == null || small == null) return null;
-        int bw = big.getWidth(), bh = big.getHeight();
-        int sw = small.getWidth(), sh = small.getHeight();
-        if (sw <= 0 || sh <= 0 || sw > bw || sh > bh) return null;
-        x0 = Math.max(0, x0); y0 = Math.max(0, y0);
-        x1 = x1 <= 0 ? bw - 1 : Math.min(bw - 1, x1);
-        y1 = y1 <= 0 ? bh - 1 : Math.min(bh - 1, y1);
-        if (x1 - x0 < sw || y1 - y0 < sh) return null;
-
-        int[] bp = pixels(big);
-        int[] sp = pixels(small);
-
-        // 三层金字塔：1/4 粗搜 → 1/2 精修 → 原图定准。
-        // 越靠前的层越稀疏，粗搜只做「排除」，不做「定案」，所以采样少点没关系。
-        int f = 4;
-        int[] bl = shrink(bp, bw, bh, f);
-        int[] sl = shrink(sp, sw, sh, f);
-        int lw = bw / f, lh = bh / f;
-        int lsw = Math.max(1, sw / f), lsh = Math.max(1, sh / f);
-        int bx = -1, by = -1;
-        float bs = -1;
-        int maxLx = Math.min(lw - lsw, x1 / f), maxLy = Math.min(lh - lsh, y1 / f);
-        // 粗搜步长：最多扫 160×160 个位置，保证耗时可控（真机 1080p 实测 < 60ms）
-        int stride = Math.max(1, Math.max(maxLx - x0 / f, maxLy - y0 / f) / 160);
-        for (int ly = y0 / f; ly <= maxLy; ly += stride) {
-            for (int lx = x0 / f; lx <= maxLx; lx += stride) {
-                float m = ratio(bl, lw, lx, ly, sl, lsw, lsh, PIXEL_SIM, 2);
-                if (m > bs) { bs = m; bx = lx * f; by = ly * f; }
-            }
-        }
-        if (bx < 0) return null;
-        // 第二层：在候选点 ±(f*2) 范围内按原图 2 像素步长精修
-        float best = -1;
-        int rx = bx, ry = by;
-        int r = f * 2;
-        for (int y = Math.max(y0, by - r); y <= Math.min(y1 - sh, by + r); y += 2) {
-            for (int x = Math.max(x0, bx - r); x <= Math.min(x1 - sw, bx + r); x += 2) {
-                float m = ratio(bp, bw, x, y, sp, sw, sh, PIXEL_SIM, 2);
-                if (m > best) { best = m; rx = x; ry = y; }
-            }
-        }
-        // 第三层：在第二层最优解 ±3 像素里按 1 像素步长定准
-        for (int y = Math.max(y0, ry - 3); y <= Math.min(y1 - sh, ry + 3); y++) {
-            for (int x = Math.max(x0, rx - 3); x <= Math.min(x1 - sw, rx + 3); x++) {
-                float m = ratio(bp, bw, x, y, sp, sw, sh, PIXEL_SIM, 2);
-                if (m > best) { best = m; rx = x; ry = y; }
-            }
-        }
-        if (best < 0) return null;
-        if (best * 100 < sim) return null;
-        return new int[]{rx + sw / 2, ry + sh / 2, Math.round(best * 100)};
+        return Match.find(plane(big), plane(small), sim, x0, y0, x1, y1);
     }
 
     /**
-     * 达标像素比例 0~1：采样步长为 step，比较 small 的每个采样点。
-     * 注意 pixelSim 是「单个像素允许差多少」的容差，跟 findImage 的 sim（整体要多大比例达标）
-     * 是两回事——把 sim 同时当这两个门槛用的话，填 90 就要求每个点都几乎一模一样且 90% 达标，
-     * 结果就是永远找不到。
+     * 找图（v3.1.0 多档缩放入口）：zoom 非 0 时模板按 0.8 / 1.0 / 1.25 三档各试一遍，
+     * 解决「屏幕上的字/图比截的模板大一号小一号」的失配；zoom 为 0 等价老接口，零额外开销。
+     * box 是 {x0,y0,x1,y1}，全 0 = 全图。
      */
-    private static float ratio(int[] big, int bw, int bx, int by,
-                               int[] small, int sw, int sh, int pixelSim, int step) {
-        int hit = 0, tot = 0;
-        for (int j = 0; j < sh; j += step) {
-            int bi = (by + j) * bw + bx;
-            int si = j * sw;
-            for (int i = 0; i < sw; i += step) {
-                tot++;
-                if (colorSim(big[bi + i], small[si + i]) >= pixelSim) hit++;
-            }
-        }
-        return tot == 0 ? 0 : (float) hit / tot;
+    public static int[] findImage(Bitmap big, Bitmap small, int sim, int[] box, float zoom) {
+        if (big == null || small == null) return null;
+        return Match.findZoom(plane(big), plane(small), sim,
+                box != null && (box[0] != 0 || box[1] != 0 || box[2] != 0 || box[3] != 0) ? box : null,
+                zoom != 0 ? Match.ZOOMS_DEFAULT : null);
     }
 
-    private static int[] pixels(Bitmap b) {
+    /** Bitmap → 零依赖像素平面（android.graphics 的调用到此为止，匹配都在 Match） */
+    private static Match.Plane plane(Bitmap b) {
         int w = b.getWidth(), h = b.getHeight();
         int[] p = new int[w * h];
         b.getPixels(p, 0, w, 0, 0, w, h);
-        return p;
-    }
-
-    /** 最近邻缩到 1/f */
-    private static int[] shrink(int[] src, int w, int h, int f) {
-        int nw = Math.max(1, w / f), nh = Math.max(1, h / f);
-        int[] out = new int[nw * nh];
-        for (int y = 0; y < nh; y++) {
-            int sy = y * f;
-            for (int x = 0; x < nw; x++) {
-                out[y * nw + x] = src[sy * w + x * f];
-            }
-        }
-        return out;
+        return new Match.Plane(p, w, h);
     }
 
     /** 裁剪 */

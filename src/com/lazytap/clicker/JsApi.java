@@ -579,6 +579,42 @@ public final class JsApi {
         return TplStore.del(name) ? "ok" : "err:删不掉";
     }
 
+    /** 把屏幕上框的一个字存成文字模板（v3.1.0 伪 OCR，找文字(图)用），坐标换算与 saveTpl 同一套 */
+    @JavascriptInterface
+    public String saveTextTpl(String json) {
+        Bitmap bmp = Capture.last();
+        if (bmp == null) return "err:还没有截图";
+        try {
+            JSONObject o = new JSONObject(json);
+            String name = o.optString("name", "").trim();
+            if (name.isEmpty()) return "err:给字模起个名字";
+            int bw = bmp.getWidth(), bh = bmp.getHeight();
+            float sx = (float) bw / (Capture.width() > 0 ? Capture.width() : bw);
+            float sy = (float) bh / (Capture.height() > 0 ? Capture.height() : bh);
+            int x = Math.round(o.optInt("x", 0) * sx);
+            int y = Math.round(o.optInt("y", 0) * sy);
+            int w = Math.round(o.optInt("w", 60) * sx);
+            int h = Math.round(o.optInt("h", 60) * sy);
+            Bitmap crop = Img.crop(bmp, x, y, w, h);
+            if (crop == null) return "err:裁剪失败";
+            boolean ok = TextTplStore.save(name, crop);
+            return ok ? "ok" : "err:保存失败";
+        } catch (Exception e) {
+            return "err:" + e.getMessage();
+        }
+    }
+
+    @JavascriptInterface
+    public String delTextTpl(String name) {
+        return TextTplStore.del(name) ? "ok" : "err:删不掉";
+    }
+
+    /** 字模名清单（JSON 数组字符串），「找文字(图)」「屏幕上有字模」的下拉数据源 */
+    @JavascriptInterface
+    public String listTextTpls() {
+        return new JSONArray(TextTplStore.names()).toString();
+    }
+
     @JavascriptInterface
     public String toast(String msg) {
         // @JavascriptInterface 跑在 WebView 的 JavaBridge 线程上，那个线程没有 Looper，

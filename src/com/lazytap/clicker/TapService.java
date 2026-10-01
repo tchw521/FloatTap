@@ -60,6 +60,7 @@ public class TapService extends AccessibilityService {
         Prefs.init(this);
         ScriptStore.init(this);
         TplStore.init(this);
+        TextTplStore.init(this);
         measure();
         listenSystem();
     }

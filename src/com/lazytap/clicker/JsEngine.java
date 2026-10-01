@@ -316,6 +316,25 @@ public final class JsEngine {
                     case "getVar":
                         r.put("v", jsLane.getVar(q.optString("k", "")));
                         break;
+                    // v3.1.0：共享变量与互斥锁（动作脚本的 globalSet/globalGet/lock/unlock 同一套表）
+                    case "gset":
+                        GlobalVars.get().put(q.optString("k", ""), q.optString("v", ""));
+                        break;
+                    case "gget":
+                        r.put("v", GlobalVars.get().get(q.optString("k", "")));
+                        break;
+                    case "glock":
+                        // 只试不等——JavaBridge 线程挂死会把 WebView 拖下水，等待由 JS 侧轮询
+                        long jrid = jsLane.runId();
+                        r.put("v", jrid > RunSlot.NO_RUN
+                                && Locks.get().tryAcquire(q.optString("k", ""), jrid) ? 1 : 0);
+                        break;
+                    case "gunlock":
+                        long urid = jsLane.runId();
+                        if (urid > RunSlot.NO_RUN) {
+                            Locks.get().release(q.optString("k", ""), urid);
+                        }
+                        break;
                     case "stop":
                         r.put("v", "ok");
                         stop();

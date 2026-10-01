@@ -83,6 +83,7 @@ public class FloatService extends Service {
         Prefs.init(this);
         ScriptStore.init(this);
         TplStore.init(this);
+        TextTplStore.init(this);
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         startInForeground();
         // v2.7.0：浮层自己订阅 Bus（状态一变刷自己），不再靠 MainActivity 捎带

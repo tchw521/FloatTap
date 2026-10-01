@@ -24,6 +24,7 @@ public class MainActivity extends Activity {
         Prefs.init(this);
         ScriptStore.init(this);
         TplStore.init(this);
+        TextTplStore.init(this);
         JsEngine.init(this);
         Trigger.scheduleAll(this);
         setContentView(R.layout.main);

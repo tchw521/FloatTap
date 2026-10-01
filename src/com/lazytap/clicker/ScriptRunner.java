@@ -607,6 +607,8 @@ public final class ScriptRunner implements RunnerPool.Lane {
                 return execFindColor(svc, a);
             case "findImage":
                 return execFindImage(svc, a);
+            case "findText":
+                return execFindText(svc, a);
             case "globalSet":
                 return execGlobalSet(a);
             case "globalGet":
@@ -1078,6 +1080,19 @@ public final class ScriptRunner implements RunnerPool.Lane {
             if (hit != null) { rememberHit(hit[0], hit[1], hit[2]); noteHit("image", hit[0], hit[1]); }
             return hit != null;
         }
+        // v3.1.0 伪 OCR：屏上有这个字模（注意 ttext——"text" 已被控件找字占用）
+        if ("ttext".equals(k)) {
+            Bitmap bmp = shotCached(svc, c);
+            if (bmp == null) return false;
+            String tpl = c.optString("ttpl", "");
+            if (tpl.isEmpty()) return false;
+            Bitmap t = TextTplStore.get(tpl);
+            if (t == null) return false;
+            int[] box = region(bmp, c);
+            int[] hit = Img.findImage(bmp, t, c.optInt("sim", 85), box, c.optInt("zoom", 0));
+            if (hit != null) { rememberHit(hit[0], hit[1], hit[2]); noteHit("text", hit[0], hit[1]); }
+            return hit != null;
+        }
         return false;
     }
 
@@ -1133,6 +1148,7 @@ public final class ScriptRunner implements RunnerPool.Lane {
             case "pkg": return "当前是 " + c.optString("v", "");
             case "color": return "有颜色 " + c.optString("c", "");
             case "image": return "有图「" + c.optString("tpl", "") + "」";
+            case "ttext": return "有字模「" + c.optString("ttpl", "") + "」";
             case "time": return "过了 " + c.optString("v", "");
             case "rand": return "随机 " + (int) c.optDouble("v", 50) + "%";
             case "expr": return c.optString("v", "");
@@ -1226,6 +1242,48 @@ public final class ScriptRunner implements RunnerPool.Lane {
             return jump(a, true);
         }
         logW("没找到图「" + name + "」");
+        return jump(a, false);
+    }
+
+    /**
+     * 找文字（v3.1.0 伪 OCR）：在当前屏幕里找「文字模板」（自截的字模），找到点击中心。
+     * 本质是找图的语义特例——匹配核心同一套（Match 金字塔），差别只在模板库分开管、
+     * 默认参数适合文字（sim 85 起步）、支持多档缩放 zoom（字体大小/分辨率对不上时开）。
+     * 动作指令叫 findText；JS 脚本里的 findText() 函数是另一套（按控件文字找节点），互不相通。
+     */
+    private int execFindText(TapService svc, JSONObject a) {
+        Bitmap bmp = Capture.shot(svc, 1500);
+        if (bmp == null) {
+            log("没截到屏，找字跳过");
+            return jump(a, false);
+        }
+        String name = a.optString("ttpl", "");
+        Bitmap tpl = TextTplStore.get(name);
+        if (tpl == null) {
+            log("没有文字模板「" + name + "」，先去「我的 → 文字模板」截一个");
+            return jump(a, false);
+        }
+        int sim = a.optInt("sim", 85);
+        int zoom = a.optInt("zoom", 0);
+        int[] r = region(bmp, a);
+        int[] hit = Img.findImage(bmp, tpl, sim, r, zoom);
+        if (hit == null && a.optLong("timeout", 0) > 0) {
+            logW("没找到字，最多再等 " + a.optLong("timeout", 0) + "ms");
+            hit = pollUntil(deadlineOf(a.optLong("timeout", 0)), "找字", () -> {
+                Bitmap b2 = Capture.shot(svc, 1500);
+                if (b2 == null) return null;
+                int[] r2 = region(b2, a);
+                return Img.findImage(b2, tpl, sim, r2, zoom);
+            });
+        }
+        if (hit != null) {
+            log("找到字「" + name + "」@(" + hit[0] + "," + hit[1] + ") 像 " + hit[2] + "%");
+            noteHit("text", hit[0], hit[1]);
+            rememberHit(hit[0], hit[1], hit[2]);   // 记进 lastX/lastY，后面的动作能直接引用
+            if (on(a, "click", true)) svc.tap(hit[0], hit[1], 60);
+            return jump(a, true);
+        }
+        logW("没找到字「" + name + "」");
         return jump(a, false);
     }
 

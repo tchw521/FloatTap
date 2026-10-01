@@ -234,6 +234,42 @@
     return r.v == null ? '' : r.v;
   }
 
+  // ---------------- 共享变量与互斥锁（v3.1.0） ----------------
+
+  /** 写共享变量：所有脚本（动作/JS）都能用 gget 或 {{g.名字}} 读到 */
+  function gset(k, v) {
+    sys({ m: 'gset', k: String(k == null ? '' : k), v: v == null ? '' : String(v) });
+    return gget(k);
+  }
+
+  /** 读共享变量：没定义返回空串 */
+  function gget(k) {
+    var r = sys({ m: 'gget', k: String(k == null ? '' : k) });
+    return r.v == null ? '' : r.v;
+  }
+
+  /**
+   * 拿互斥锁：同名锁全局互斥（动作脚本的 lock 动作也一样）。
+   * 原生桥不阻塞，这里自己轮询：拿到返回 true，等够 timeoutMs 还没有返回 false。
+   */
+  function glock(name, timeoutMs) {
+    return new Promise(function (resolve) {
+      var deadline = Date.now() + (timeoutMs == null ? 5000 : n(timeoutMs, 0));
+      function attempt() {
+        var r = sys({ m: 'glock', k: String(name == null ? '' : name) });
+        if (r.v) { resolve(true); return; }
+        if (Date.now() >= deadline) { resolve(false); return; }
+        sleep(200).then(attempt);
+      }
+      attempt();
+    });
+  }
+
+  /** 放互斥锁：不是自己拿的锁放不掉 */
+  function gunlock(name) {
+    sys({ m: 'gunlock', k: String(name == null ? '' : name) });
+  }
+
   /** 计数器：count('main') 加一；count('main', {reset:true}) 清零。返回当前值 */
   function count(name, opt) {
     opt = opt || {};
@@ -308,6 +344,7 @@
     findText: findText, waitText: waitText, runSub: runSub,
     findColor: findColor, findImage: findImage, cmpColor: cmpColor,
     setVar: setVar, getVar: getVar, count: count,
+    gset: gset, gget: gget, glock: glock, gunlock: gunlock,
     rand: rand, now: now, screen: screen, log: log, toast: toast, stop: stop,
     running: running
   };
