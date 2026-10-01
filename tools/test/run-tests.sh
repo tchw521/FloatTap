@@ -19,7 +19,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # 把要测的源码剥掉 package 放到 out/ 下，测的是真代码
-for f in Expr Vars Share LogLine HotKey Timing NodeMatch RunState SubCall RunSlot Bus RunnerPool LogStore; do
+for f in Expr Vars Share LogLine HotKey Timing NodeMatch RunState SubCall RunSlot Bus RunnerPool LogStore Match GlobalVars Locks; do
   sed 's/^package com\.lazytap\.clicker;//' "$SRC/$f.java" > "$OUT/$f.java"
 done
 
@@ -66,6 +66,18 @@ java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" SlotTest | tail -2
 echo "==> 运行会话池（PoolTest + 真实 RunnerPool/LogStore/RunSlot/Bus/LogLine）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/RunnerPool.java" "$OUT/LogStore.java" "$OUT/RunSlot.java" "$OUT/Bus.java" "$OUT/LogLine.java" PoolTest.java
 java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" PoolTest | tail -2
+
+echo "==> 模板匹配（MatchTest + 真实 Match，零 Android 依赖）"
+javac -nowarn -encoding UTF-8 -d "$OUT" "$OUT/Match.java" MatchTest.java
+java -Dfile.encoding=UTF-8 -cp "$OUT" MatchTest | tail -2
+
+echo "==> 共享变量表（GlobalVarsTest + 真实 GlobalVars）"
+javac -nowarn -encoding UTF-8 -d "$OUT" "$OUT/GlobalVars.java" GlobalVarsTest.java
+java -Dfile.encoding=UTF-8 -cp "$OUT" GlobalVarsTest | tail -2
+
+echo "==> 互斥锁（LocksTest + 真实 Locks，含真线程竞争）"
+javac -nowarn -encoding UTF-8 -d "$OUT" "$OUT/Locks.java" LocksTest.java
+java -Dfile.encoding=UTF-8 -cp "$OUT" LocksTest | tail -2
 
 echo "==> 子脚本调用（SuTest + 真实 SubCall）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/SubCall.java" SuTest.java
