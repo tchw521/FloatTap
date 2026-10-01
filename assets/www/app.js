@@ -339,14 +339,41 @@
       + (act && !v ? ' data-act="' + act + '"' : '') + '><b></b>' + label + (v ? ' 已开' : ' 未开') + '</span>';
   }
 
+  // v3.0.0：会话时长，浮层同款格式（12s / 1m03s）
+  function fmtElapsed(ms) {
+    var s = Math.max(0, Math.floor((ms || 0) / 1000));
+    if (s < 60) return s + 's';
+    return Math.floor(s / 60) + 'm' + (s % 60 < 10 ? '0' : '') + (s % 60) + 's';
+  }
+
+  // v3.0.0：多会话逐条渲染——名字 + #runId 徽标 + 进度/时长 + 单独的暂停与停止。
+  // JS 会话没有暂停键（v2.5 起的约定），停止照有。
+  function runRows(runs) {
+    var h = '<div class="runs">';
+    for (var i = 0; i < runs.length; i++) {
+      var r = runs[i];
+      h += '<div class="runrow" data-runid="' + r.runId + '">'
+        + '<span class="rt">' + (r.state === 'paused' ? '⏸' : '▶') + ' ' + esc(r.name || '未命名')
+        + '<span class="lrb">#' + r.runId + '</span></span>'
+        + '<span class="rs">' + (r.total > 0 ? r.prog + '/' + r.total : fmtElapsed(r.elapsed)) + '</span>'
+        + (r.js ? '' : '<button class="btn sm" data-act="pauseRun" data-runid="' + r.runId + '">'
+          + (r.state === 'paused' ? '▶' : '⏸') + '</button>')
+        + '<button class="btn sm warn" data-act="stopRun" data-runid="' + r.runId + '">■</button>'
+        + '</div>';
+    }
+    return h + '</div>';
+  }
+
   function heroCard() {
     var st = S.st || {};
+    var runs = st.runs || [];
     var running = !!st.running;
     var paused = !!st.paused;
     var cur = (running || paused) ? findScript(st.current) : null;
     var h = '<div class="hero">'
       + '<div class="hi">' + (paused ? '中场休息' : running ? '手指已下班' : '今天也要少动手指') + '</div>'
-      + '<div class="ht">' + (paused ? '已暂停 · ' + esc(cur ? cur.name : '运行中')
+      + '<div class="ht">' + (runs.length > 1 ? runs.length + ' 条会话在跑'
+        : paused ? '已暂停 · ' + esc(cur ? cur.name : '运行中')
         : running ? esc(cur ? cur.name : '运行中') : '一切就绪') + '</div>'
       + '<div class="hs">'
       + dot(st.acc, '无障碍', 'acc')
@@ -355,8 +382,12 @@
       + (paused ? '<span class="dot paused"><b></b>已暂停</span>' : '')
       + (running ? '<span class="dot run"><b></b>运行中</span>' : '')
       + (st.recording ? '<span class="dot run"><b></b>录制中</span>' : '')
-      + '</div><div class="row">';
-    if (running || paused) {
+      + '</div>';
+    if (runs.length) h += runRows(runs);
+    h += '<div class="row">';
+    if (runs.length > 1) {
+      h += '<button class="btn warn grow" data-act="stop">■ 停全部</button>';
+    } else if (running || paused) {
       h += '<button class="btn grow" data-act="togglePause">' + (paused ? '▶ 继续跑' : '⏸ 暂停') + '</button>'
         + '<button class="btn warn grow" data-act="stop">■ 立刻刹车</button>';
     } else if (S.scripts.length) {
@@ -404,7 +435,8 @@
     for (var i = 0; i < list.length; i++) {
       var s = list[i];
       var acts = s.actions || [];
-      var running = S.st.running && S.st.current === s.id;
+      // v3.0.0：高亮按「这条脚本在哪个会话跑」匹配（runs 快照的 id 字段 = 脚本 id）
+      var running = (S.st && S.st.runs || []).some(function (r) { return r.id === s.id; });
       h += '<div class="item' + (running ? ' run' : '') + '" data-id="' + s.id + '">'
         + (q ? '' : '<div class="grip" data-drag="' + S.scripts.indexOf(s) + '" data-list="scripts">⋮⋮</div>')
         + '<div class="ic g' + toneCls(s.tone) + '" data-act="pickIcon" data-id="' + s.id + '">' + iconOf(s.icon) + '</div>'
@@ -669,17 +701,21 @@
       if (lv === 2) nErr++; else if (lv === 1) nWarn++;
     }
 
+    var many = (st.runs || []).length > 1;   // v3.0.0：多会话时大卡变概览
     var h = '<div class="hero"><div class="hi">运行状态</div>'
-      + '<div class="ht">' + (st.paused ? '⏸ 已暂停 · ' + esc(st.runName || '')
+      + '<div class="ht">' + (many ? '🏃 ' + (st.runs || []).length + ' 条会话在跑'
+        : st.paused ? '⏸ 已暂停 · ' + esc(st.runName || '')
         + (st.prog ? ' · 第 ' + esc(st.prog) + ' 步' : '')
         : st.running ? '🏃 正在跑 · ' + esc(st.runName || '')
         + (st.prog ? ' · 第 ' + esc(st.prog) + ' 步' : '')
         : st.js ? '⚡ JS 脚本运行中'   // v2.5.0：以前 JS 在跑这里显示「空闲中」，瞎话
         : '💤 空闲中') + '</div>'
       + '<div class="row">'
-      + ((st.running || st.paused) ? '<button class="btn grow" data-act="togglePause">'
-        + (st.paused ? '▶ 恢复' : '⏸ 暂停') + '</button>' : '')
-      + ((st.running || st.paused) ? '<button class="btn warn grow" data-act="stop">■ 停止</button>' : '')
+      + (many
+        ? '<button class="btn warn grow" data-act="stop">■ 停全部</button>'
+        : ((st.running || st.paused) ? '<button class="btn grow" data-act="togglePause">'
+          + (st.paused ? '▶ 恢复' : '⏸ 暂停') + '</button>'
+          + '<button class="btn warn grow" data-act="stop">■ 停止</button>' : ''))
       + '<button class="btn ghost" data-act="logRefresh">刷新</button></div>'
       + '<div class="row" style="margin-top:8px">'
       + '<button class="btn sm ghost grow" data-act="logFilter">' + (min ? '✓ 只看提醒' : '全部') + '</button>'
@@ -818,6 +854,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v3.0.0</div><b>真·多任务并行</b>来了：最多同时跑 <b>3 条脚本</b>（2 条动作 + 1 条 JS），互不抢场、日志各记各的（#编号 徽标分清是谁写的）。跑第二个脚本不再把第一个踢掉——会话满了会明说「先停一个再跑」；定时触发器撞上满员会跳过这一轮并记条日志，不再抢占。运行大卡升级成<b>会话列表</b>：每条会话带 #编号，单独暂停／停止（JS 会话不支持暂停，老约定）；脚本列表里谁在跑一眼全亮；变量页按会话分组看数。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.7.0</div>多任务基建（还不是真并行，为下版打底）：日志每行带上<b>#编号</b>，标出是第几次跑写的——两脚本交替跑也不串；悬浮条最多能同屏 <b>3 条</b>，各自显示进度和暂停键，JS 脚本也显示真实脚本名了；音量键急停、状态面板改走结构化消息。界面看着变化不大，底下把「正在跑什么」从单例字段换成了可多开的「运行会话」记账。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.6.0</div>动作列表新增<b>子脚本</b>：把常用流程单独存成一个脚本，别的脚本里一条动作就能调它，还能<b>传参</b>（填 JSON，如 {"n":1}，子脚本里用 {{n}} 引用）；子脚本里写的变量跑完还在，父脚本接着就能读，算它的回值。子脚本里的「收工／重来」只结束子脚本、不带走父脚本；套娃最多 5 层，A 调 B、B 调 A 的死循环进不来。JS 脚本也补齐了查找：<b>tapText／hasText</b> 支持控件 id、内容描述、正则选项，新增 <b>findText</b>（只找不点，立刻回坐标）、<b>waitText</b>（等文字出现再往下走）、<b>runSub</b>（JS 里也能调子脚本）。找文字／找色／找图命中后坐标都会记进 {{lastX}}／{{lastY}}。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.5.0</div>运行能<b>暂停</b>了：悬浮条多了「⏸ 暂停 / ▶ 恢复」按钮，暂停后跑到哪一步记住哪一步，恢复从断点继续、不丢进度；等待中的动作也能立刻暂停，暂停期间不吃等待时长。音量键升级三态：<b>短按</b>切换暂停/恢复、<b>长按</b>才是急停，没跑脚本时音量归系统管。磁贴、悬浮球、日志面板都能看出暂停态。JS 脚本模式暂不支持暂停（短按就是急停），下版再补。',
@@ -1475,9 +1512,22 @@
         + '<button class="btn sm ghost" data-act="delVar" data-i="' + i + '">✕</button></div>';
     }
     h += '<button class="btn wide ghost" style="margin-top:2px" data-act="addVar">＋ 加个变量</button>';
-    // 运行时变量值（如果脚本正在跑）
-    var rv = S.st && S.st.vars;
-    if (rv && rv.length) {
+    // 运行时变量值（如果脚本正在跑）。v3.0.0：多会话按会话分组（varsList），
+    // 单会话 / 老内核走 legacy vars 降级
+    var vls = S.st && S.st.varsList;
+    if (vls && vls.length > 1) {
+      for (var g = 0; g < vls.length; g++) {
+        var grp = vls[g];
+        var gv = grp.vars || [];
+        h += '<div class="sec" style="margin-top:12px">会话 #' + grp.runId + ' · ' + esc(grp.name || '') + '</div>'
+          + '<div class="wrap" style="gap:5px">';
+        for (var x = 0; x < gv.length; x++) {
+          h += '<span class="chip">' + esc(gv[x].k) + ' = ' + esc(gv[x].v === '' ? '空' : gv[x].v) + '</span>';
+        }
+        h += '</div>';
+      }
+    } else if (S.st && S.st.vars && S.st.vars.length) {
+      var rv = S.st.vars;
       h += '<div class="sec" style="margin-top:12px">脚本跑起来后，现在这几个变量的值</div>'
         + '<div class="tiny" style="margin:-4px 0 6px">跟上面的初值不一样是正常的：上面的只有点「保存」才会写进脚本。</div>'
         + '<div class="wrap" style="gap:5px">';
@@ -1830,6 +1880,15 @@
       }
       case 'stop': ok(call('stop')); setTimeout(refreshAll, 200); break;
       case 'togglePause': ok(call('togglePause')); setTimeout(refreshAll, 200); break;   // v2.5.0 暂停⇄恢复
+      // v3.0.0：单会话控制（大卡 runrow 上的按钮）
+      case 'pauseRun':
+        ok(call('togglePauseRun', String(el.dataset.runid || '')));
+        setTimeout(refreshAll, 200);
+        break;
+      case 'stopRun':
+        ok(call('stopRun', String(el.dataset.runid || '')));
+        setTimeout(refreshAll, 200);
+        break;
       case 'edit': openEditor(id); break;
       case 'back':
         // 在分组里就先退回脚本层，不在才退回脚本列表

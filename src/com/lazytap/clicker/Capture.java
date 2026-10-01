@@ -123,7 +123,7 @@ public final class Capture {
         if (!running()) {
             String err = start(c);
             if (err != null) {
-                ScriptRunner.get().note("截图失败：" + err);
+                ScriptRunner.sysNote("截图失败：" + err);
                 return null;
             }
         }

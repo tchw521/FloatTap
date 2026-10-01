@@ -99,7 +99,7 @@ public class FloatService extends Service {
             startTouchCapture();
         } else if (A_HIDE.equals(a)) hideBall();
         else if (A_STOP.equals(a)) {
-            ScriptRunner.get().stop();
+            JsEngine.stopAll();   // v3.0.0：通知栏急停=停全部（含 JS 道清 busy）
             toast("已刹车");
             refresh();
         } else if (A_RUN.equals(a)) {
@@ -519,14 +519,13 @@ public class FloatService extends Service {
             root.addView(zone);
             // v2.5.0：暂停⇄恢复。JS 脚本跑着时这个按钮会被藏起来（JS 暂不支持暂停）
             pauseBtn = barBtn("⏸ 暂停", "#F39C12", () -> {
-                ScriptRunner.get().togglePause();
+                JsEngine.togglePauseRun(runId);   // v3.0.0：暂停的是自己这条会话
                 refresh();
             });
             root.addView(pauseBtn);
             root.addView(barBtn("■ 停止", () -> {
-                // v2.7.0：停自己这条会话——JS 停 JS，引擎停引擎
-                if (js) JsEngine.get().stop();
-                else ScriptRunner.get().stop();
+                // v3.0.0：停自己这条会话（JS 道内部会经 JsEngine 清 busy）
+                JsEngine.stopRun(runId);
                 toast("已刹车");
                 refresh();
             }));
@@ -720,7 +719,7 @@ public class FloatService extends Service {
                 showPanel();
             }
         } else if (n == 2) {
-            ScriptRunner.get().stop();
+            JsEngine.stopAll();   // v3.0.0：球双击=停全部
             toast("已刹车");
             refresh();
         } else {
@@ -746,11 +745,9 @@ public class FloatService extends Service {
             return;
         }
         buzz();
-        if (ScriptRunner.get().isBusy()) {   // 暂停中的也要先停掉再开新的
-            ScriptRunner.get().stop();
-            toast("先停下，再开始");
-        }
-        JsEngine.startScript(sc, null);
+        // v3.0.0：领道开跑。同 id=重启（不打扰）；满员/失败 toast startScript 的文案
+        String err = JsEngine.startScript(sc, null);
+        if (err != null) toast(err);
         refresh();
         closePanel();
     }
@@ -818,7 +815,7 @@ public class FloatService extends Service {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(dp(10), dp(6), dp(10), dp(10));
         row.addView(btn("停止", "#E74C3C", v -> {
-            ScriptRunner.get().stop();
+            JsEngine.stopAll();   // v3.0.0：面板停止=停全部
             toast("已刹车");
             closePanel();
         }));
@@ -927,11 +924,12 @@ public class FloatService extends Service {
             if (w <= 0 || hh <= 0) return;
             String state = "点";
             int color = idleColor();
-            boolean busy = ScriptRunner.get().isBusy();
-            if (busy) {
+            String busy = RunSlot.busyOf(RunSlot.ACTIVE);   // v3.0.0：聚合真相源（onDraw 热路径也是它）
+            if (!"idle".equals(busy)) {
                 // v2.5.0：暂停单独一态，别让用户以为还在跑
-                state = ScriptRunner.get().isPaused() ? "暂" : "跑";
-                color = ScriptRunner.get().isPaused()
+                boolean paused = "paused".equals(busy);
+                state = paused ? "暂" : "跑";
+                color = paused
                         ? Color.parseColor("#F39C12") : Color.parseColor("#2ECC71");
             } else if (TapService.get() != null && TapService.get().isRecording()) {
                 state = "录";
@@ -954,7 +952,7 @@ public class FloatService extends Service {
             ring.setColor(Color.WHITE);
             ring.setAlpha((int) (150 * a));
             c.drawCircle(cx, cy, r - dpf(3.5f), ring);            // 玻璃内环
-            if (busy) {                                          // 运行时外圈弧
+            if (!"idle".equals(busy)) {                          // 运行时外圈弧
                 ring.setStrokeWidth(dpf(2.4f));
                 ring.setAlpha((int) (240 * a));
                 c.drawArc(cx - r - dp(2), cy - r - dp(2), cx + r + dp(2), cy + r + dp(2),

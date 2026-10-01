@@ -72,15 +72,34 @@ const MOCK_SRC = `() => {
     fireTrigger: () => 'ok',
     togglePause: () => 'paused',   // v2.5.0：暂停⇄恢复，前端点了不能炸
     curApp: () => 'com.tencent.mm',
-    // v2.7.0：status 带新字段 runs（RunSlot 聚合快照）+ __mockRunning 开关——
-    // 老字段 running/current/js 一个不动，验证新旧并存下大卡与磁贴不回归。
-    // window.__runs 形状对齐 RunSlot.snapshot：{runId,state,id,name,prog,total,elapsed,js}
-    status: () => JSON.stringify({ running: !!window.__mockRunning,
-      current: window.__mockRunning ? 'a1' : '', runName: window.__mockRunning ? '每天签到' : '',
-      acc: true, overlay: true,
-      recording: true, touch: true, ball: true, log: logs, screen: { w: 1080, h: 1920 },
-      vars: [{ k: 'n', v: '2' }, { k: 'gap', v: '1000' }], js: false,
-      runs: window.__runs || [] }),
+    // v3.0.0：status 全面模拟真内核的多会话形状——
+    // runs 由 window.__runs 驱动（RunSlot.snapshot 形状 {runId,state,id,name,prog,total,elapsed,js}），
+    // legacy 字段（running/paused/current/runName/prog）从 runs 降级派生（与真内核同规则）：
+    // 不设 __runs 时行为与 v2.7 桩完全一致（__mockRunning 显式开关优先），旧冒烟零回归。
+    // varsList 按会话分组；js 由 __mockJs 开关；__mockFull 打开后 run/runJs 返回满员错误。
+    status: () => {
+      const runs = window.__runs || [];
+      const first = runs[0];
+      const running = window.__mockRunning !== undefined
+        ? !!window.__mockRunning
+        : runs.some(r => r.state === 'running');
+      const paused = window.__mockPaused !== undefined
+        ? !!window.__mockPaused
+        : (runs.length > 0 && runs.every(r => r.state === 'paused'));
+      const vl = runs.map(r => ({ runId: r.runId, name: r.name,
+        vars: [{ k: 'n', v: '2' }, { k: 'gap', v: '1000' }] }));
+      return JSON.stringify({
+        running: running, paused: paused,
+        current: first ? first.id : (window.__mockRunning ? 'a1' : ''),
+        runName: first ? first.name : (window.__mockRunning ? '每天签到' : ''),
+        prog: first && first.total > 0 ? (first.prog + '/' + first.total) : '',
+        acc: true, overlay: true,
+        recording: true, touch: true, ball: true, log: logs, screen: { w: 1080, h: 1920 },
+        vars: [{ k: 'n', v: '2' }, { k: 'gap', v: '1000' }],
+        varsList: vl, js: !!window.__mockJs,
+        runs: runs
+      });
+    },
     prefs: () => JSON.stringify({ ballSize: 54, ballAlpha: 0.88, speed: 1, mode: 'normal',
       vibrate: true, boot: false, theme: 'orange', lastScript: 'a1',
       autoRecordDelay: true, touchRecord: true, recordingOn: true }),
@@ -92,8 +111,19 @@ const MOCK_SRC = `() => {
       { t: 'long', x: 300, y: 400, ms: 800, d: 300, note: '触点' }
     ]),
     clearRecording: () => 'ok', saveRecording: () => 'ok',
-    run: () => 'ok', stop: () => 'ok', testAction: () => 'ok',
-    runJs: () => 'ok', stopJs: () => 'ok',
+    // v3.0.0：run/runJs 支持 __mockFull（模拟池满员，startScript 的错误文案原样返回，
+    // 前端 err: 前缀会 toast）；stop=停全部（清 __runs，等价 JsEngine.stopAll）；
+    // stopRun/togglePauseRun 记参数并从 __runs 里摘掉那条（等价单会话收工）
+    run: () => { if (window.__mockFull) return 'err:会话已满（2 个动作 + 1 个 JS），先停一个再跑'; return 'ok'; },
+    runJs: () => { if (window.__mockFull) return 'err:JS 脚本已经在跑了，先停掉再换'; return 'ok'; },
+    stop: () => { window.__runs = []; window.__mockRunning = false; return 'ok'; },
+    stopRun: id => {
+      window.__lastStopArg = id;
+      window.__runs = (window.__runs || []).filter(r => String(r.runId) !== String(id));
+      return 'ok';
+    },
+    togglePauseRun: id => { window.__lastPauseArg = id; return 'ok'; },
+    testAction: () => 'ok', stopJs: () => 'ok',
     openAcc: () => 'ok', openOverlay: () => 'ok', showBall: () => 'ok', hideBall: () => 'ok',
     recStart: () => 'ok', recStop: () => 'ok', toast: () => 'ok', toBall: () => 'ok',
     // v1.5.0 图色识别

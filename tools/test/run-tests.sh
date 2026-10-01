@@ -19,7 +19,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # 把要测的源码剥掉 package 放到 out/ 下，测的是真代码
-for f in Expr Vars Share LogLine HotKey Timing NodeMatch RunState SubCall RunSlot Bus; do
+for f in Expr Vars Share LogLine HotKey Timing NodeMatch RunState SubCall RunSlot Bus RunnerPool LogStore; do
   sed 's/^package com\.lazytap\.clicker;//' "$SRC/$f.java" > "$OUT/$f.java"
 done
 
@@ -62,6 +62,10 @@ java -Dfile.encoding=UTF-8 -cp "$OUT" R | tail -2
 echo "==> 运行会话与多播（SlotTest + 真实 RunSlot/Bus/LogLine）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/RunSlot.java" "$OUT/Bus.java" "$OUT/LogLine.java" SlotTest.java
 java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" SlotTest | tail -2
+
+echo "==> 运行会话池（PoolTest + 真实 RunnerPool/LogStore/RunSlot/Bus/LogLine）"
+javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/RunnerPool.java" "$OUT/LogStore.java" "$OUT/RunSlot.java" "$OUT/Bus.java" "$OUT/LogLine.java" PoolTest.java
+java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" PoolTest | tail -2
 
 echo "==> 子脚本调用（SuTest + 真实 SubCall）"
 javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/SubCall.java" SuTest.java

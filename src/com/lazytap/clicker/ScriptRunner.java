@@ -18,28 +18,21 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 脚本执行引擎：串行、可中断、零反射。
  * 所有手势都走 AccessibilityService#dispatchGesture，不注入事件、不 root，
  * 因此只占用一个后台线程 + 少量对象，内存开销可以忽略。
+ *
+ * <p>v3.0.0 起多实例化：一个实例 = 池里的一条道（0/1 引擎动作道、2 JS 道），
+ * 装配点在 {@link Lanes}；「哪条道能不能跑」由 {@link RunnerPool} 记账，
+ * 本类只管一条道内的串行执行。
  */
-public final class ScriptRunner {
-
-    public interface Listener {
-        void on(String type, String data);
-    }
-
-    private static volatile ScriptRunner instance;
+public final class ScriptRunner implements RunnerPool.Lane {
 
     private final HandlerThread thread = new HandlerThread("lazytap-run");
     private Handler h;
     private final Random rnd = new Random();
-    // 引擎线程在写（log），界面/WebView 桥线程在读（JsApi 拼状态 JSON）——
-    // 用并发容器，否则遍历时增删会 ConcurrentModificationException，
-    // 异常被上层吞掉后整个状态面板会缺一块
-    private final List<LogLine> logs = new CopyOnWriteArrayList<>();
 
     /** v2.5.0：运行三态（停止/运行/暂停）。以前是 volatile boolean running，暂停做不了 */
     private final RunState rs = new RunState();
@@ -48,10 +41,10 @@ public final class ScriptRunner {
     private volatile int progCur, progTotal;
     /** v2.7.0：本次运行会话 id（引擎动作脚本与 JS 脚本共用一个序列）。0 = 没在跑，日志归系统 */
     private volatile long runId;
-    /** v2.7.0：本次引擎动作脚本的运行槽（含名字/进度/时长，浮层与聚合吃它） */
+    /** v2.7.0：本次运行会话的槽（含名字/进度/时长，浮层与聚合吃它）。
+     *  v3.0.0 起一实例一槽：引擎动作脚本（js=false）与 JS 脚本（js=true）共用——
+     *  一个实例只有一条命，不存在双槽并存。 */
     private volatile RunSlot slot;
-    /** v2.7.0：JS 脚本的运行槽（startJs 建、stopJs 或跑完注销） */
-    private volatile RunSlot jsSlot;
     /** JS 模式用的循环设置：-1=一直跑，其余为轮数；jsDelayMs 是开跑前的等待 */
     private volatile int jsLoops = 1, jsDelayMs;
     private volatile long runStartAt;
@@ -61,8 +54,6 @@ public final class ScriptRunner {
     private JSONArray actions;
     private int index;
     private JSONObject script;
-    /** v2.7.0：多播——浮层 / 磁贴 / 界面各自订阅，互不认识 */
-    private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private long loopStart;
     private final java.util.HashMap<String, Integer> counters = new java.util.HashMap<>();
     /** 最近一次图色命中的坐标，形如 "x,y"，供后续动作引用 */
@@ -78,27 +69,18 @@ public final class ScriptRunner {
     /** v2.6.0：本步是 runSub 时子脚本实际跑的步数（-1 = 本步不是子脚本），runOne 组装回值用 */
     private int subSteps = -1;
 
-    ScriptRunner() {
+    /** 本实例在池里的道号（0/1 引擎动作道、2 JS 道） */
+    private final int lane;
+    /** v3.0.0：JS 道角色（lane==RunnerPool.JS_LANE）。替代旧的 jsMode 字段——
+     *  那玩意 start/stop 不复位，抢占后会残留 true（v3.0.0 顺手修掉的隐性 bug） */
+    private final boolean jsRole;
+
+    /** package-private：只有 Lanes（同包）该 new——道号由装配点定，外面别造实例 */
+    ScriptRunner(int lane) {
+        this.lane = lane;
+        this.jsRole = lane == RunnerPool.JS_LANE;
         thread.start();
         h = new Handler(thread.getLooper());
-    }
-
-    public static ScriptRunner get() {
-        if (instance == null) {
-            synchronized (ScriptRunner.class) {
-                if (instance == null) instance = new ScriptRunner();
-            }
-        }
-        return instance;
-    }
-
-    /** v2.7.0：多播注册。一个监听者抛异常不影响其余（遍历照常走完） */
-    public void addListener(Listener l) {
-        if (l != null && !listeners.contains(l)) listeners.add(l);
-    }
-
-    public void removeListener(Listener l) {
-        listeners.remove(l);
     }
 
     public boolean isRunning() {
@@ -119,22 +101,14 @@ public final class ScriptRunner {
         return currentId;
     }
 
-    public List<LogLine> logs() {
-        return logs;
+    /** Lane：本道当前会话的运行 id（没在跑 = RunSlot.NO_RUN）。池按它找道 */
+    public long runId() {
+        return runId;
     }
 
-    /** 面板展示用：只取最后 n 行，转成 JSON 对象（带时间戳和级别） */
-    public JSONArray logsJson(int n) {
-        JSONArray a = new JSONArray();
-        int start = Math.max(0, logs.size() - Math.max(1, n));
-        for (int i = start; i < logs.size(); i++) a.put(logs.get(i).json());
-        return a;
-    }
-
-    /** 日志面板的「清空」按钮 */
-    public void clearLogs() {
-        logs.clear();
-        for (Listener l : listeners) l.on("log", "");
+    /** Lane：本道当前脚本 id（没在跑 = ""）。池按它认「同 id 重启」 */
+    public String scriptId() {
+        return currentId;
     }
 
     private void log(String s) {
@@ -152,10 +126,10 @@ public final class ScriptRunner {
     private void log(String s, int lv) {
         if (s == null) return;
         // v2.7.0：这行日志归属哪次运行（runId），停止后归 0（系统消息）——
-        // 两脚本交替跑时日志面板靠它区分是谁写的
-        logs.add(LogLine.of(runId, s, lv));
-        while (logs.size() > LogLine.CAP) logs.remove(0);
-        for (Listener l : listeners) l.on("log", s);
+        // 两脚本交替跑时日志面板靠它区分是谁写的。
+        // v3.0.0：存储上收 LogStore（全池合并视图），事件改 Bus 直发（listener 体系退役）。
+        LogStore.get().add(LogLine.of(runId, s, lv));
+        Bus.emit("log", s);
     }
 
     /** 给外部（服务 / 悬浮球）往日志页里写一句话 */
@@ -166,6 +140,17 @@ public final class ScriptRunner {
     /** 给外部写一句警示（日志面板标黄） */
     public void warn(String s) {
         logW(s);
+    }
+
+    /**
+     * v3.0.0：系统级消息（录制/截图这类不挂任何会话的日志）——r=0 无徽标。
+     * 以前这类消息 note 给单例、混进当时在跑的会话；并行后没有「当时的会话」，
+     * 只能明确归系统。录制 / 截图的调用点在 B3 迁过来。
+     */
+    public static void sysNote(String s) {
+        if (s == null) return;
+        LogStore.get().add(LogLine.of(RunSlot.NO_RUN, s, LogLine.INFO));
+        Bus.emit("log", s);
     }
 
     /**
@@ -182,7 +167,8 @@ public final class ScriptRunner {
             if (extra != null && !extra.isEmpty()) o.put("extra", extra);
         } catch (Throwable ignored) {
         }
-        for (Listener l : listeners) l.on("status", o.toString());
+        // v3.0.0：Bus 直发（listener 体系退役）——TapService 等消费方自己 addSink
+        Bus.emit("status", o.toString());
     }
 
     // ---------- v2.7.0：运行槽（RunSlot）同步 ----------
@@ -200,11 +186,8 @@ public final class ScriptRunner {
             s.unregister();
             slot = null;
         }
-        RunSlot js = jsSlot;
-        if (js != null) {
-            js.unregister();
-            jsSlot = null;
-        }
+        // v3.0.0：道还池里。不还的话这条道永远算被占着（满员误报）
+        RunnerPool.get().release(lane);
     }
 
     // ---------- v2.2.0：运行浮层要读的进度 ----------
@@ -247,7 +230,9 @@ public final class ScriptRunner {
             logE("无障碍服务没开，跑不动");
             return false;
         }
-        stop();
+        // v3.0.0：忙才停（旧会话收尾）。空闲时别碰 stop——retireSlot 会把
+        // startScript 刚领的道还回池里，跑着跑着池就「满」了
+        if (isBusy()) stop();
         script = sc;
         currentId = sc.optString("id");
         actions = sc.optJSONArray("actions");
@@ -318,7 +303,7 @@ public final class ScriptRunner {
 
     /** v2.5.0：暂停。跑到哪一步记住哪一步，恢复从断点继续；JS 模式不做暂停 */
     public void pause() {
-        if (jsMode) {
+        if (jsRole) {
             log("JS 脚本暂不支持暂停，要停就按停止");
             return;
         }
@@ -1422,11 +1407,6 @@ public final class ScriptRunner {
     private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
     private int[] lastHit;         // 最近一次图色命中的坐标
     private boolean lastBool;      // 最近一次判断类动作的结果
-    private volatile boolean jsMode;
-
-    public boolean isJsMode() {
-        return jsMode && rs.isRunning();
-    }
 
     /** JS 脚本开跑：把状态准备好，但不启动 step 循环——节奏交给 JS 自己控制 */
     public boolean startJs(JSONObject sc) {
@@ -1434,7 +1414,8 @@ public final class ScriptRunner {
             log("无障碍服务没开，跑不动");
             return false;
         }
-        stop();
+        // v3.0.0：同 start()——忙才收旧会话，空闲时不还道
+        if (isBusy()) stop();
         script = sc == null ? new JSONObject() : sc;
         currentId = script.optString("id");
         actions = null;                 // JS 模式没有动作表
@@ -1458,32 +1439,17 @@ public final class ScriptRunner {
         vars.screenH = ts != null ? ts.screenH() : 0;
         ScriptStore.touchRun(script);
         Prefs.put("lastScript", currentId);
-        jsMode = true;
         rs.start();
         String name = script.optString("name", "未命名");
-        // v2.7.0：JS 会话也有自己的槽——浮层与聚合从此显示真实脚本名（以前只能写「JS 脚本」）
+        // v2.7.0：JS 会话也有自己的槽——浮层与聚合从此显示真实脚本名（以前只能写「JS 脚本」）。
+        // v3.0.0：一实例一槽，JS 会话同样走 slot（本实例是 JS 道角色，slot 不会与引擎会话并存）
         runId = RunSlot.nextId();
-        jsSlot = new RunSlot(runId, true);
-        jsSlot.setMeta(currentId, name);
-        jsSlot.register();
+        slot = new RunSlot(runId, true);
+        slot.setMeta(currentId, name);
+        slot.register();
         log("开跑（JS）：" + name);
         status("running", name);
         return true;
-    }
-
-    public void stopJs() {
-        jsMode = false;
-        rs.stop();
-        repeatLeft = 0;
-        if (h != null) h.removeCallbacksAndMessages(null);
-        if (!currentId.isEmpty()) status("stopped", "");   // runId 还在，前端知道哪次会话结束
-        RunSlot js = jsSlot;
-        if (js != null) {
-            js.unregister();
-            jsSlot = null;
-        }
-        runId = RunSlot.NO_RUN;
-        currentId = "";
     }
 
     /**
@@ -1501,7 +1467,7 @@ public final class ScriptRunner {
         h.post(() -> {
             JSONObject r = new JSONObject();
             try {
-                if (!rs.isRunning() || !jsMode) {
+                if (!rs.isRunning() || !jsRole) {
                     r.put("err", "已经停了");
                 } else {
                     lastHit = null;

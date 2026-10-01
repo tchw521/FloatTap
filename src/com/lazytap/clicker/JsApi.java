@@ -48,29 +48,51 @@ public final class JsApi {
         JSONObject sc = ScriptStore.findScript(id);
         if (sc == null) return "err:脚本不存在";
         if (!TapService.alive()) return "err:无障碍没开";
-        if (ScriptRunner.get().isBusy()) ScriptRunner.get().stop();   // 暂停中的也要先停
-        return ScriptRunner.get().start(sc) ? "ok" : "err:启动失败";
+        // v3.0.0：领道开跑，不再「先杀正在跑的」。满员 / JS 忙的文案由 startScript 出
+        String err = JsEngine.startScript(sc, (type, data) -> Bus.emit("js", type + "|" + data));
+        return err == null ? "ok" : "err:" + err;
     }
 
     @JavascriptInterface
     public String stop() {
-        ScriptRunner.get().stop();
-        JsEngine.get().stop();
+        JsEngine.stopAll();
         return "ok";
     }
 
-    /** v2.5.0：暂停⇄恢复。返回切换后的状态（paused/running），前端刷新用 */
+    /** v2.5.0：暂停⇄恢复。v3.0.0 起是全局的：暂停全部 / 恢复全部（JS 道不参与） */
     @JavascriptInterface
     public String togglePause() {
-        ScriptRunner r = ScriptRunner.get();
-        r.togglePause();
-        return r.isPaused() ? "paused" : "running";
+        boolean running = "running".equals(RunSlot.busyOf(RunSlot.ACTIVE));
+        if (running) JsEngine.pauseAll();
+        else JsEngine.resumeAll();
+        return running ? "paused" : "running";
     }
 
-    /** v2.2.0：日志面板的「清空」 */
+    /** v3.0.0：停某一条会话（运行大卡条目上的停止键），runId 从 runs 里来 */
+    @JavascriptInterface
+    public String stopRun(String runId) {
+        try {
+            JsEngine.stopRun(Long.parseLong(runId));
+        } catch (NumberFormatException ignored) {
+        }
+        return "ok";
+    }
+
+    /** v3.0.0：暂停⇄恢复某一条会话（JS 会话没有暂停键，前端不给她这按钮） */
+    @JavascriptInterface
+    public String togglePauseRun(String runId) {
+        try {
+            JsEngine.togglePauseRun(Long.parseLong(runId));
+        } catch (NumberFormatException ignored) {
+        }
+        return "ok";
+    }
+
+    /** v2.2.0：日志面板的「清空」。v3.0.0 日志在 LogStore（全池合并视图） */
     @JavascriptInterface
     public String clearLogs() {
-        ScriptRunner.get().clearLogs();
+        LogStore.get().clear();
+        Bus.emit("log", "");
         return "ok";
     }
 
@@ -91,15 +113,14 @@ public final class JsApi {
 
     // ---------- JS 脚本模式（v1.7.0） ----------
 
-    /** 跑一个 JS 脚本（脚本对象里带 code 字段） */
+    /** 跑一个 JS 脚本（脚本对象里带 code 字段）。v3.0.0 与 run 同一个池入口 */
     @JavascriptInterface
     public String runJs(String id) {
         JSONObject sc = ScriptStore.findScript(id);
         if (sc == null) return "err:脚本不存在";
         if (!TapService.alive()) return "err:无障碍没开";
-        if (JsEngine.get().isBusy()) return "err:上一个 JS 脚本还在跑，先停掉";
-        return JsEngine.startScript(sc, (type, data) -> Bus.emit("js", type + "|" + data))
-                ? "ok" : "err:脚本是空的，先写两行";
+        String err = JsEngine.startScript(sc, (type, data) -> Bus.emit("js", type + "|" + data));
+        return err == null ? "ok" : "err:" + err;
     }
 
     @JavascriptInterface
@@ -204,9 +225,18 @@ public final class JsApi {
     public String status() {
         JSONObject o = new JSONObject();
         try {
-            o.put("running", ScriptRunner.get().isRunning());
-            o.put("paused", ScriptRunner.get().isPaused());   // v2.5.0：日志面板要分清暂停和空闲
-            o.put("current", ScriptRunner.get().currentId());
+            // v3.0.0：running/paused/current/prog/runName/vars 这些旧字段从「首忙道」降级
+            //（前端老代码还在吃它们），新代码一律看 runs / varsList。
+            String busy = RunSlot.busyOf(RunSlot.ACTIVE);
+            o.put("running", "running".equals(busy));
+            o.put("paused", "paused".equals(busy));
+            RunSlot first = null;
+            for (RunSlot s : RunSlot.ACTIVE) {
+                first = s;
+                break;
+            }
+            String cur = first != null ? first.scriptId() : "";
+            o.put("current", cur);
             o.put("acc", TapService.enabled(c));
             o.put("overlay", overlayOk());
             TapService svc = TapService.get();
@@ -214,15 +244,35 @@ public final class JsApi {
                     || Prefs.getBool("recordingOn", false));
             o.put("touch", svc != null && svc.touchOn());
             o.put("ball", FloatService.get() != null && FloatService.get().ballShown());
-            o.put("log", ScriptRunner.get().logsJson(80));   // 带时间和级别（含 v2.7.0 的运行归属 r），日志面板要着色
-            // v2.7.0：全部活着的运行会话（形状按多条设计，单例时代实际 ≤2 条）。
-            // running/paused/current 保留旧字段，前端零改动
+            o.put("log", LogStore.get().json(80));   // 带时间和级别（含 v2.7.0 的运行归属 r），日志面板要着色
+            // v2.7.0：全部活着的运行会话（v3.0.0 起真的会同时有多条）
             o.put("runs", RunSlot.aggregate(RunSlot.ACTIVE).optJSONArray("runs"));
-            ScriptRunner r = ScriptRunner.get();
-            o.put("prog", r.hasProgress() ? (r.progressCur() + "/" + r.progressTotal()) : "");
-            o.put("runName", r.isBusy() ? r.currentName() : "");   // 暂停时名字也要留着显示
+            if (first != null) {
+                o.put("prog", first.progTotal() > 0 ? (first.progCur() + "/" + first.progTotal()) : "");
+                o.put("runName", first.scriptName());   // 暂停时名字也要留着显示（槽还在）
+            } else {
+                o.put("prog", "");
+                o.put("runName", "");
+            }
             o.put("screen", screenInfo());
-            o.put("vars", ScriptRunner.get().varSnapshot());   // 运行时变量值，调试用
+            // legacy vars：首忙道的变量快照（新前端按 varsList 分组，这个兜底给旧调用）
+            RunnerPool.Lane fl = cur.isEmpty() ? null : RunnerPool.get().findByScriptId(cur);
+            Object fv = fl != null ? fl.varSnapshot() : null;
+            o.put("vars", fv != null ? fv : new JSONObject());
+            // v3.0.0：按会话分组的变量表（变量页多会话各看各的）
+            JSONArray vl = new JSONArray();
+            for (RunSlot s : RunSlot.ACTIVE) {
+                if (s == null) continue;
+                RunnerPool.Lane l = RunnerPool.get().findByRunId(s.runId);
+                if (l == null) continue;
+                JSONObject g = new JSONObject();
+                Object vs = l.varSnapshot();
+                g.put("runId", s.runId);
+                g.put("name", s.scriptName());
+                g.put("vars", vs != null ? vs : new JSONObject());
+                vl.put(g);
+            }
+            o.put("varsList", vl);
             o.put("js", JsEngine.get().isBusy());              // JS 脚本在不在跑
         } catch (Exception ignored) {
         }
@@ -246,10 +296,19 @@ public final class JsApi {
         return a.toString();
     }
 
-    /** 试算一段表达式（不含 {{}}），用当前变量值算，界面上即时看结果 */
+    /** 试算一段表达式（不含 {{}}），用当前变量值算，界面上即时看结果。
+     *  v3.0.0：优先用首条忙道的变量（跟 legacy vars 同一个来源），没有忙道用引擎道 0 */
     @JavascriptInterface
     public String tryExpr(String e) {
-        String r = ScriptRunner.get().tryEval(e);
+        ScriptRunner lane = null;
+        for (RunSlot s : RunSlot.ACTIVE) {
+            RunnerPool.Lane l = RunnerPool.get().findByRunId(s.runId);
+            if (l instanceof ScriptRunner) {
+                lane = (ScriptRunner) l;
+                break;
+            }
+        }
+        String r = (lane != null ? lane : Lanes.get(0)).tryEval(e);
         return r == null ? "err:读不懂" : r;
     }
 
@@ -560,8 +619,8 @@ public final class JsApi {
             sc.put("actions", arr);
             sc.put("loop", false);
             sc.put("loopCount", 1);
-            ScriptRunner.get().stop();
-            return ScriptRunner.get().start(sc) ? "ok" : "err:失败";
+            String err = JsEngine.startScript(sc, null);
+            return err == null ? "ok" : "err:" + err;
         } catch (Exception e) {
             return "err:" + e.getMessage();
         }

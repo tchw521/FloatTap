@@ -42,7 +42,7 @@ public class CaptureService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         startInForeground();
         String err = Capture.start(this);
-        if (err != null) ScriptRunner.get().note(err);
+        if (err != null) ScriptRunner.sysNote(err);
         return START_STICKY;
     }
 

@@ -110,12 +110,10 @@ public class TapService extends AccessibilityService {
             info.flags |= AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             setServiceInfo(info);
         }
-        // v2.7.0：多播注册。TapService 是常驻的权威消费者：把引擎事件转发进 Bus
-        //（界面 / 浮层各自从 Bus 拿，不再由这里捎带刷新）。
-        // 注意旧版靠「单 listener 后注册覆盖前注册」才没把事件双推给 WebView——
-        // 多播后 MainActivity 不许再注册 ScriptRunner listener，只走 Bus 一条路。
-        ScriptRunner.get().addListener((type, data) -> {
-            Bus.emit(type, data);
+        // v3.0.0：引擎事件由 ScriptRunner 直接 Bus 直发（listener 体系退役），
+        // 这里作为常驻 sink 只做「开跑拉浮层」一件事——
+        // 千万别再把事件转发回 Bus：自己收自己发，死循环。
+        Bus.addSink((type, data) -> {
             boolean running = false;
             try {
                 running = "running".equals(new JSONObject(data).optString("state"));
@@ -164,20 +162,22 @@ public class TapService extends AccessibilityService {
      */
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
-        // v2.5.0 三态：引擎忙（跑着或暂停）→ 短按切暂停/恢复、长按急停；
+        // v2.5.0 三态：有会话在跑（跑着或暂停）→ 短按切暂停/恢复、长按急停；
         // 只有 JS 在跑 → 按一下急停；都没跑 → 放行，音量归系统管。
+        // v3.0.0：「忙」看注册表（ACTIVE 非空 = 有任何会话活着），不再问单例
         String act = HotKey.action(event.getKeyCode(), HotKey.isDown(event.getAction()),
                 event.getRepeatCount(), Prefs.getBool("volStop", false),
-                ScriptRunner.get().isBusy(), JsEngine.get().isBusy());
+                !RunSlot.ACTIVE.isEmpty(), JsEngine.get().isBusy());
         if (HotKey.TOGGLE.equals(act)) {
-            ScriptRunner.get().togglePause();
+            // v3.0.0：暂停类是全局的——暂停全部 / 恢复全部（JS 道不参与）
+            if ("running".equals(RunSlot.busyOf(RunSlot.ACTIVE))) JsEngine.pauseAll();
+            else JsEngine.resumeAll();
             if (FloatService.get() != null) FloatService.get().refresh();
             return true;
         }
         if (HotKey.STOP.equals(act)) {
-            ScriptRunner.get().stop();
-            JsEngine.get().stop();
-            ScriptRunner.get().note("按了" + HotKey.name(event.getKeyCode())
+            JsEngine.stopAll();
+            ScriptRunner.sysNote("按了" + HotKey.name(event.getKeyCode())
                     + (event.getRepeatCount() >= HotKey.LONG_AT ? "（长按）" : "") + "，急停");
             Bus.emit("status", "{\"state\":\"stopped\",\"extra\":\"vol\"}");   // v2.7.0：状态统一 JSON
             if (FloatService.get() != null) FloatService.get().refresh();
@@ -469,7 +469,7 @@ public class TapService extends AccessibilityService {
         } catch (Throwable ignored) {
         }
         touchOn = t;
-        ScriptRunner.get().note(t
+        ScriptRunner.sysNote(t
                 ? "开始录制：触点捕获已开，任意界面都能录"
                 : "开始录制：触点捕获没开（需悬浮窗权限），只能录有节点的界面");
         // 兜底：1.5 秒内捕获窗没真的挂上，就退回无障碍通道，绝不让两条通道同时哑火
@@ -479,7 +479,7 @@ public class TapService extends AccessibilityService {
                 if (!recording) return;
                 if (!touchConfirmed) {
                     touchOn = false;
-                    ScriptRunner.get().note("触点捕获没挂上，退回无障碍通道（只能录有节点的界面）");
+                    ScriptRunner.sysNote("触点捕获没挂上，退回无障碍通道（只能录有节点的界面）");
                     if (FloatService.get() != null) FloatService.get().refresh();
                 }
             }, 1500);
@@ -508,7 +508,7 @@ public class TapService extends AccessibilityService {
             }
         }
         Bus.emit("record", "stop");
-        ScriptRunner.get().note("录完了，共 " + ScriptStore.recording().length() + " 步");
+        ScriptRunner.sysNote("录完了，共 " + ScriptStore.recording().length() + " 步");
         uiToast("录完了，共 " + ScriptStore.recording().length() + " 步");
     }
 
@@ -528,7 +528,7 @@ public class TapService extends AccessibilityService {
         } catch (Throwable ignored) {
             touchOn = false;
         }
-        ScriptRunner.get().note("录制被系统打断，已接着录");
+        ScriptRunner.sysNote("录制被系统打断，已接着录");
         if (FloatService.get() != null) FloatService.get().refresh();
     }
 
@@ -777,7 +777,7 @@ public class TapService extends AccessibilityService {
         long now = System.currentTimeMillis();
         if (now - lastHint < 4000) return;
         lastHint = now;
-        ScriptRunner.get().note("这个界面不给节点，坐标抓不到；开悬浮窗权限可用触点录制");
+        ScriptRunner.sysNote("这个界面不给节点，坐标抓不到；开悬浮窗权限可用触点录制");
     }
 
     /** 录制时把真实操作间隔记下来，回放才像人 */

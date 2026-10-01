@@ -64,7 +64,7 @@
 | 节点查找 desc | 有 | **引擎已支持**（TapService.java:379 `getContentDescription()`），只是表单没入口 | v2.4.0 顺带补入口 |
 | 暂停 / 恢复 | 有 | 无，只有跑 / 停（ScriptRunner.java:225 `stop()`） | **v2.5.0** |
 | 音量键三态 | 有 | 只有一态（HotKey.java:27 `wantStop`） | v2.5.0 |
-| 多任务并行 | 有 | 无，`ScriptRunner.get()` **单例且被设计成互斥**（ScriptRunner.java:359 注释「它们本来就没法并行」） | **v3.0.0** |
+| 多任务并行 | 有 | **有（v3.0.0 交付）**：`RunnerPool` 会话池，2 引擎道 + 1 JS 道（实测 61 处 `get()` / 8 文件全迁） | ✅ |
 | 子脚本传参 | 有 | 无，JsApi 与 runner.js 均无 args 入口 | **v2.6.0** |
 | JS 模式完整性 | QuickJS 全量 | 受限桥 + 注入包装（不用 QuickJS 的三条理由见 CHANGELOG v1.7.0） | v2.6.0 |
 | OCR 文字识别 | ML Kit / 端上模型 | **无，且零依赖下做不了真 OCR** | 见 1.3 |
@@ -228,7 +228,7 @@ normId 四种输入形态、contains vs 全等、非法正则不抛异常、LRU 
 | **v2.5.0** ✅ 已交付 | 三态运行（暂停 / 恢复） | 抽 `RunState`（STOPPED / RUNNING / PAUSED + 暂停闸口 `gate` + 可暂停睡 `sleep`）、音量键三态（短按切换 / 长按≥3 次急停）、浮层暂停按钮、磁贴与大卡三态、JS 忙时日志页显「⚡ 运行中」 | **实到 16 代码文件 / 约 680 行**（改 13 + 新 3） | R.java **34** 断言（含真线程挂起/唤醒）+ K 三态矩阵（短按 4 / 长按 6）+ v25 冒烟 6 张 + 反向验证 5 步全红；暂停不吃等待时长；JS 模式本版不暂停（短按即急停） | v2.4.0 |
 | **v2.6.0** ✅ 已交付 | JS 模式补齐 + 子脚本传参 | 📦 子脚本动作（`sel:scripts` 下拉自动排除自己与 JS 脚本、`args` 传参 JSON、变量即回值）；引擎 `execSubScript` 同线程阻塞递归（暂停 / 停止 / 插值自然生效，深度守卫 5 层）；runner.js 补 `findText` / `waitText` / `runSub` 与 tapText/hasText 的 id/desc/re 透传 | **实到 7 代码文件 / 约 350 行**（改 6 + 新 1） | SuTest **30** 断言（传参 / 平铺 / 深度守卫 / 回值 / 子循环跳转仿真）+ F 补注册 `execSubScript` 并新增 find 回填断言（**27** 项）+ v26 冒烟 6 张 + 反向验证 3 步全红；JS 脚本当不了子脚本（WebView 与引擎互等死锁，本版明确不做） | v2.5.0 |
 | **v2.7.0** ✅ 已交付 | 多任务基建（**还不并行**） | 新 `RunSlot`（runId 自增、ACTIVE 注册表、busyOf 最忙优先、aggregate 聚合）；`LogLine` 加 `r` 归属（`LogLine.of` 工厂）；`Bus` 与引擎监听改多播；status 升级 JSON（`{state,runId,id,name}`）、JsApi 加 `runs` 数组；悬浮条容器化 `RunBarBox`（≤3 条纵向错开、JS 显示真名、停止只停自己）；TapService 权威监听 / MainActivity 只走 Bus / FloatService 自订阅 | **实到 15 代码文件 / 净约 670 行**（改 12 + 新 3：RunSlot / SlotTest / v27 冒烟） | SlotTest **41** 断言（含**交替跑不串日志仿真**与 Bus 多播）+ F 加「日志带运行归属」守卫（**28** 项）+ v27 冒烟 6 张 + 反向验证 4 步全红；两脚本交替跑不串日志、状态各记各的 | v2.6.0 |
-| **v3.0.0** | **多任务并行** | ScriptRunner 单例改实例池，解掉 53 处 `get()` | 约 400+ 行 / 8 文件 | 两脚本真并发互不干扰 | **v2.7.0 硬前置** |
+| **v3.0.0** ✅ 已交付 | **多任务并行** | `RunnerPool` 会话池（2 引擎道 + 1 JS 道，`Lane` 零依赖接口 + synchronized 记账）+ `LogStore` 合并日志 + `Lanes` 装配；`ScriptRunner` 多实例化（删单例 `get()`／监听体系／`jsMode`）；61 处 `get()` / 8 文件全迁（满员拒绝、触发器跳过不抢占）；`JsEngine` 收口 5 个全局操作（stopAll / pauseAll / resumeAll / stopRun / togglePauseRun）；前端会话大卡 runrow、列表双高亮、`varsList` 分组 | **实到 19 文件 / 净约 +200 行**（改 14 + 新 5：RunnerPool / LogStore / Lanes / PoolTest / v30 冒烟） | PoolTest **30** 断言（单测总量 **547 / 15 类**）+ v30 冒烟 9 张 + 反向验证 4 步全红；两脚本真并发互不干扰 | **v2.7.0 硬前置** |
 
 ### 关于 RunState 的时机（已决策）
 
@@ -261,7 +261,7 @@ normId 四种输入形态、contains vs 全等、非法正则不抛异常、LRU 
 | **v2.5.0（已交付）** | **140,696 B** | **±0**（dex +3,372，压缩后恰与上版同字节数；已 `unzip` 验 `RunState` 进包） |
 | **v2.6.0（已交付）** | **144,792 B** | **+4,096**（dex +3,804；已 `unzip` 验 `SubCall` 进包） |
 | **v2.7.0（已交付）** | **148,888 B** | **+4,096**（dex +4,872；已 `unzip` + dexdump 验 `RunSlot` 进包） |
-| v3.0.0 | ≤ 160 KB | +6 |
+| **v3.0.0（已交付）** | **152,984 B** | **+4,096**（dex +4,060；已 `unzip` + dexdump 验 `RunnerPool` / `LogStore` / `Lanes` 进包） |
 
 **红线**：dex ≤ 200 KB、APK ≤ 200 KB。
 

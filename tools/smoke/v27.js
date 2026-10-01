@@ -107,12 +107,12 @@ if (!cssSrc.includes('.log .lrb')) errs.push('style.css 缺 .lrb 徽标样式');
   await want('日志已复制（11 条）', '复制 toast');
   await shot('03-log-copy');
 
-  // 4. status 新旧字段并存：runs 塞两条 + running=true → 大卡「正在跑」不回归
+  // 4. status 新旧字段并存：runs 塞一条 + running=true → 大卡走 legacy 单会话渲染不回归
+  //   （v3.0.0 起多条 runs 时大卡变多会话概览——那条路由 v30 冒烟守，这里守单会话降级）
   await evalOf(() => {
     window.__mockRunning = true;
     window.__runs = [
-      { runId: 1, state: 'running', id: 'a1', name: '每天签到', prog: '3/9', total: 9, elapsed: 5, js: false },
-      { runId: 2, state: 'paused', id: 'a2', name: '连点器', prog: '', total: 0, elapsed: 12, js: true }
+      { runId: 1, state: 'running', id: 'a1', name: '每天签到', prog: '3/9', total: 9, elapsed: 5, js: false }
     ];
   });
   await clickSel('[data-act="logRefresh"]', '刷新');

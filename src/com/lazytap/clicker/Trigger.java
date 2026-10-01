@@ -114,11 +114,15 @@ public final class Trigger {
             Bus.emit("log", "⏰ 到点了，但无障碍没开，跑不动");
             return;
         }
-        ScriptRunner r = ScriptRunner.get();
-        if (r.isRunning()) r.stop();
-        if (JsEngine.startScript(sc, null)) {
+        // v3.0.0：不再抢占——领道失败就跳过这次（同 id 重启仍会走 startScript 的重启路径），
+        // 原因写进日志，别让定时任务静默消失
+        String err = JsEngine.startScript(sc, null);
+        if (err == null) {
             Bus.emit("log", "⏰ " + why(kind) + "，开跑：" + sc.optString("name", "脚本"));
             if (FloatService.get() != null) FloatService.get().refresh();
+        } else {
+            Bus.emit("log", "⏰ " + why(kind) + "，但" + err + "，「"
+                    + sc.optString("name", "脚本") + "」这次跳过");
         }
     }
 
