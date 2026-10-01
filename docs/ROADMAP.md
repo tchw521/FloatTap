@@ -359,7 +359,8 @@ normId 四种输入形态、contains vs 全等、非法正则不抛异常、LRU 
 | OCR | **不做真 OCR** | 与零依赖 / 控体积正面冲突；用 viewId + desc + getText 替代 |
 | 云端模拟器 | **独立 spike 先跑，不阻塞发版** | 风险隔离，跑通再接正式流程 |
 | 脚本市场（服务端） | **不做** | 离线是卖点 |
+| push 走 HTTPS + GnuTLS 报 `-110` | **改用 HTTP/1.1 + 大 postBuffer 一次过**（`-c http.version=HTTP/1.1 -c http.postBuffer=524288000 -c http.lowSpeedLimit=0`） | v4.3.0 / v4.4.0 / v4.5.0 连续三版撞到同一错误：含大量二进制截图的大 commit 在 HTTP/2 + 默认缓冲下被掐断。前两版「重试一次就好」是运气，v4.5.0 重试两次都失败（第二次跑满 7 分钟才断）。换 HTTP/1.1 后首次即成功，Release 脚本耗时也从 ~9 分钟降到 32 秒 |
 
 ---
 
-*最后更新：v2.3.0 发版后（commit `5e79731`）*
+*最后更新：v4.5.0 发版后（commit `9692f76`）*
