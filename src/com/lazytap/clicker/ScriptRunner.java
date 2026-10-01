@@ -181,6 +181,9 @@ public final class ScriptRunner implements RunnerPool.Lane {
 
     /** 会话结束（急停 / 自然收工）注销槽——注销即从聚合与浮层里消失 */
     private void retireSlot() {
+        // v3.1.0：会话收尾放掉它拿的全部互斥锁。放在最前面——此刻 runId 还没清零，
+        // 四条收工路径都是先 retireSlot 再 runId = NO_RUN，晚了就 releaseAll(0) 清不掉
+        Locks.get().releaseAll(runId);
         RunSlot s = slot;
         if (s != null) {
             s.unregister();
@@ -604,6 +607,14 @@ public final class ScriptRunner implements RunnerPool.Lane {
                 return execFindColor(svc, a);
             case "findImage":
                 return execFindImage(svc, a);
+            case "globalSet":
+                return execGlobalSet(a);
+            case "globalGet":
+                return execGlobalGet(a);
+            case "lock":
+                return execLock(a);
+            case "unlock":
+                return execUnlock(a);
             case "runSub":
                 return execSubScript(a);
             case "multi": {
@@ -1310,6 +1321,80 @@ public final class ScriptRunner implements RunnerPool.Lane {
         String v = a.optString("v", "");   // {{}} 已在插值阶段算好
         vars.put(k, v);
         log("变量 " + k + " = " + (v.isEmpty() ? "（空）" : v));
+        return 0;
+    }
+
+    /** 写共享变量（v3.1.0）：所有运行中的脚本共用一张表，别的脚本任何字段里写 {{g.名字}} 就能读 */
+    private int execGlobalSet(JSONObject a) {
+        String k = a.optString("k", "").trim();
+        if (k.isEmpty()) {
+            log("写共享变量没填名字，跳过");
+            return 0;
+        }
+        String v = a.optString("v", "");   // {{}} 已在插值阶段算好
+        GlobalVars.get().put(k, v);
+        log("共享变量 " + k + " = " + (v.isEmpty() ? "（空）" : v));
+        return 0;
+    }
+
+    /** 读共享变量到本道变量（v3.1.0）：之后 cmpVar / 表达式照常能用 {{to}}，也总可以直接写 {{g.名字}} */
+    private int execGlobalGet(JSONObject a) {
+        String k = a.optString("k", "").trim();
+        if (k.isEmpty()) {
+            log("读共享变量没填名字，跳过");
+            return 0;
+        }
+        String to = a.optString("to", "").trim();
+        if (to.isEmpty()) to = k;
+        if (to.startsWith("g.")) {
+            logW("本道变量名别用 g. 开头（g. 是共享变量的保留前缀），不然读的时候会串");
+        }
+        String v = GlobalVars.get().get(k);
+        vars.put(to, v == null ? "" : v);
+        log("共享变量 " + k + " → 本道 " + to + " = " + (v == null || v.isEmpty() ? "（空）" : v));
+        return 0;
+    }
+
+    /**
+     * 拿互斥锁（v3.1.0）：同名锁全局互斥（可重入），timeout 内轮询着等；
+     * 超时没拿到走 els——默认收工，因为拿不到锁还继续往下跑必然破坏互斥语义。
+     * 脚本收尾 retireSlot 会自动放掉全部锁，忘了解锁也不坑下一个脚本。
+     */
+    private int execLock(JSONObject a) {
+        String name = a.optString("name", "").trim();
+        if (name.isEmpty()) {
+            log("拿锁没填锁名，跳过");
+            return 0;
+        }
+        boolean got = Locks.get().tryAcquire(name, runId);
+        if (!got && a.optLong("timeout", 0) > 0) {
+            long timeout = a.optLong("timeout", 0);
+            logW("锁「" + name + "」被别人拿着，最多再等 " + timeout + "ms");
+            Boolean ok = pollUntil(deadlineOf(timeout), "拿锁",
+                    () -> Locks.get().tryAcquire(name, runId) ? Boolean.TRUE : null);
+            got = ok != null;
+        }
+        if (got) {
+            log("拿到锁「" + name + "」");
+            return jump(a, true);
+        }
+        logW("没拿到锁「" + name + "」");
+        lastBool = false;
+        int v = a.optInt("els", -1);   // 没填 els 默认收工——互斥语义不允许「没锁也往下跑」
+        if (v == -1) return JUMP_END;
+        if (v == -2) return JUMP_LOOP;
+        return v;
+    }
+
+    /** 放互斥锁（v3.1.0）：不是自己拿的锁放不掉 */
+    private int execUnlock(JSONObject a) {
+        String name = a.optString("name", "").trim();
+        if (name.isEmpty()) {
+            log("放锁没填锁名，跳过");
+            return 0;
+        }
+        boolean ok = Locks.get().release(name, runId);
+        log(ok ? "放掉锁「" + name + "」" : "锁「" + name + "」不归这个会话（没拿到或已放）");
         return 0;
     }
 

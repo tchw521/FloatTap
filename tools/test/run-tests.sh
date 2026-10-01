@@ -24,7 +24,7 @@ for f in Expr Vars Share LogLine HotKey Timing NodeMatch RunState SubCall RunSlo
 done
 
 echo "==> 表达式求值器（ExprTest）"
-javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/Expr.java" "$OUT/Vars.java" ExprTest.java
+javac -nowarn -encoding UTF-8 -cp "$OUT:$CP" -d "$OUT" "$OUT/Expr.java" "$OUT/Vars.java" "$OUT/GlobalVars.java" ExprTest.java
 java -Dfile.encoding=UTF-8 -cp "$OUT:$CP" ExprTest | tail -2
 
 echo "==> 变量插值（VarsTest）"

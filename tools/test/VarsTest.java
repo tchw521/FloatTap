@@ -59,6 +59,18 @@ public class VarsTest {
         eq("内置变量清单非空", String.valueOf(Vars.BUILTIN.length > 5), "true");
         System.out.println("  内置变量：" + Vars.BUILTIN.length + " 个 —— " + Vars.BUILTIN[0][0] + "（" + Vars.BUILTIN[0][1] + "）");
 
+        System.out.println("=== 跨脚本共享变量（v3.1.0 g. 前缀） ===");
+        GlobalVars.get().clear();
+        GlobalVars.get().put("score", "777");
+        eq("g. 前缀直读共享表", v.text("{{g.score}}"), "777");
+        eq("g. 前缀参与运算", v.text("{{g.score+1}}"), "778");
+        eq("g. 未定义当 0", v.text("{{g.nothing}}"), "0");
+        GlobalVars.get().put("score", "888");
+        eq("实时共享（同实例）", v.text("{{g.score}}"), "888");
+        eq("本道变量不受影响", v.text("{{n}}"), "3");
+        Vars v2 = new Vars(); v2.screenW = 1; v2.screenH = 1;
+        eq("另一个 Vars 实例读同一个共享表", v2.text("{{g.score}}"), "888");
+
         System.out.println("=== hasVar ===");
         eq("有变量", String.valueOf(Vars.hasVar("{{n}}")), "true");
         eq("没变量", String.valueOf(Vars.hasVar("540")), "false");

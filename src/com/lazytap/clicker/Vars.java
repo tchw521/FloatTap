@@ -26,6 +26,7 @@ public final class Vars {
             {"hit.colorY", "最近一次「找色」命中的 Y"},
             {"hit.imageX", "最近一次「找图」命中的 X"},
             {"hit.imageY", "最近一次「找图」命中的 Y"},
+            {"g.名字", "跨脚本共享变量（v3.1.0）：globalSet 写，任何脚本任何字段里直接读"},
             {"loop", "当前第几轮（从 1 开始）"},
             {"step", "当前第几步（从 1 开始）"},
             {"screenW", "屏幕宽度（像素）"},
@@ -120,6 +121,11 @@ public final class Vars {
             if (name.startsWith("hit.") && hit != null) {
                 String v = hit.get(name.substring(4));
                 return v == null ? "0" : v;
+            }
+            // v3.1.0：跨脚本共享变量，g. 名字 → GlobalVars 进程级单例。
+            // 直接走单例不经过本道 map，天然所有会话实时共享
+            if (name.startsWith("g.") && name.length() > 2) {
+                return GlobalVars.get().get(name.substring(2));
             }
             String v = map.get(name);
             return v;   // 没定义就返回 null，Expr 会当 0
