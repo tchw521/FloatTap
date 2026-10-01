@@ -204,7 +204,7 @@ const { MOCK_IIFE } = require('./mock.js');
   // ---------- v1.7.0：JS 脚本模式 ----------
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
   await clickText('#tabs button', '脚本');
-  await page.evaluate(() => { const f = document.querySelector('.fab'); if (f) f.click(); });
+  await page.evaluate(() => { const f = document.querySelector('.tb-fab'); if (f) f.click(); });
   await wait(420);
   await shot('28-new-script');
   if (!(await has('JS 脚本'))) errs.push('新建里没有「JS 脚本」入口');

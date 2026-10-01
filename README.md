@@ -193,7 +193,7 @@ App 不在前台也生效，重启后自动重排；同一条规则 8 秒冷却�
 
 ## 三、怎么用（安装后 60 秒上手）
 
-1. 安装 APK（用 `adb install LazyTap-v3.2.0.apk` 或传到手机点开安装）。
+1. 安装 APK（用 `adb install LazyTap-v4.0.0.apk` 或传到手机点开安装）。
 2. 打开 App → **第一次会自动弹权限引导**（主卡下方也有常驻引导卡，没给齐一直显示）：
    - **开启无障碍服务**：点「① 开无障碍服务」跳系统设置 → 找到「懒人点击器」→ 打开。
    - **授权悬浮窗**：点「② 授权悬浮窗」→ 允许「显示在其他应用上层」。
@@ -288,7 +288,8 @@ assets/www/                   界面（index.html / app.js / style.css）
 | v2.4.0 | 节点查找增强（viewId / 正则 / desc） |
 | v2.5.0 | 三态运行：暂停 / 恢复 + `RunState` |
 | v2.6.0 | JS 模式补齐 + 子脚本传参 |
-| v3.2.0（当前） | 权限强引导（首启弹层 + 常驻卡 + 无障碍假死检测）+ 六家 ROM 白名单路径 |
+| v4.0.0（当前） | 液态玻璃整装重设计（半透明玻璃材质 + 柔和光影）+ 底栏中央制作键 ✦ + 分组侧栏 + 左右滑动切页；实测 165,272 B |
+| v3.2.0 | 权限强引导（首启弹层 + 常驻卡 + 无障碍假死检测）+ 六家 ROM 白名单路径 |
 | v3.1.0 | 伪 OCR（文字模板 / 找文字(图) / 多尺度）+ 多任务深化（共享变量 / 互斥锁）；实测 161,176 B |
 | v3.0.0 | 多任务并行（单例改实例池：2 动作 + 1 JS） |
 
@@ -298,8 +299,8 @@ assets/www/                   界面（index.html / app.js / style.css）
 
 ```bash
 export ANDROID_HOME=/root/android-sdk     # 需要 platforms/android-34 + build-tools/34.0.0
-./build.sh 3.2.0 22                       # 参数：版本名 版本码
-# 产出 out/LazyTap-v3.2.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
+./build.sh 4.0.0 23                       # 参数：版本名 版本码
+# 产出 out/LazyTap-v4.0.0.apk（已用 lazytap.jks 签名，storePass/keyPass: lazytap）
 ```
 
 > 无网络时也能构建：整条流水线只依赖本地 Android SDK 和 JDK，不下载任何依赖。

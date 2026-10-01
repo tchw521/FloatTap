@@ -48,11 +48,14 @@ fs.mkdirSync(OUT, { recursive: true });
   await want('每天签到', '脚本列表');
   await shot('01-tab-scripts');
 
-  // 2. 底部就该 4 个 Tab，多了少了都算错
-  const nTabs = await page.evaluate(() => document.querySelectorAll('#tabs button').length);
-  if (nTabs !== 4) errs.push('底部 Tab 数量应为 4，实际 ' + nTabs);
+  // 2. 底部 4 个功能 Tab + 中央 1 个制作键（v4.0.0 骨架），多了少了都算错
+  const nTabs = await page.evaluate(() => document.querySelectorAll('#tabs button:not(.tb-fab)').length);
+  if (nTabs !== 4) errs.push('底部功能 Tab 数量应为 4，实际 ' + nTabs);
+  const nFab = await page.evaluate(() => document.querySelectorAll('#tabs button.tb-fab').length);
+  if (nFab !== 1) errs.push('中央制作键应有 1 个，实际 ' + nFab);
   const tabNames = await page.evaluate(() =>
     [...document.querySelectorAll('#tabs button')]
+      .filter(b => !b.classList.contains('tb-fab'))
       .map(b => { const sp = b.querySelectorAll('span'); return (sp.length ? sp[sp.length - 1] : b).textContent.trim(); })
       .join('/'));
   if (tabNames !== '脚本/市场/录制/我的') errs.push('Tab 名称不对：' + tabNames);

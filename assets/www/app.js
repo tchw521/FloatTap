@@ -8,6 +8,7 @@
     tab: 'scripts',
     sub: null,        // 「我的」里的子页：log / trig / settings / about
     condSub: null,    // 正在改第几个条件（null=在动作主表单）
+    cat: 'all',       // v4.0.0：脚本库当前筛选的分组（'all'=全部；值来自脚本自己的 cat 字段）
     // 进动作编辑器时的快照，用于「取消」真正撤销。
     // 因为 saveScripts 是把整个 S.scripts 全量写回的，
     // 光靠「编辑期间不落盘」挡不住——之后任何一次落盘都会把内存里的改动一起带走。
@@ -247,10 +248,10 @@
     applyTheme();
     render();
   }
-  var THEMES = { orange: '橙', teal: '青', violet: '紫', blue: '蓝', green: '绿', pink: '粉' };
-  var THEME_C = { orange: '#ff6b35', teal: '#0d9488', violet: '#8b5cf6', blue: '#3b82f6', green: '#22c55e', pink: '#ec4899' };
+  var THEMES = { aqua: '水色', orange: '橙', teal: '青', violet: '紫', blue: '蓝', green: '绿', pink: '粉' };
+  var THEME_C = { aqua: '#06b6d4', orange: '#ff6b35', teal: '#0d9488', violet: '#8b5cf6', blue: '#3b82f6', green: '#22c55e', pink: '#ec4899' };
   function applyTheme() {
-    var t = (S.prefs && S.prefs.theme) || 'orange';
+    var t = (S.prefs && S.prefs.theme) || 'aqua';
     if (document.documentElement.dataset.theme !== t) document.documentElement.dataset.theme = t;
   }
   function saveScripts() {
@@ -330,16 +331,7 @@
         try { n.setSelectionRange(keep.pos, keep.pos); } catch (e) { }
       }
     }
-
-    var fab = $('.fab');
-    if (!S.editId && S.tab === 'scripts' && !fab) {
-      var f = document.createElement('div');
-      f.className = 'fab'; f.textContent = '＋';
-      f.onclick = newScript;
-      document.body.appendChild(f);
-    } else if (fab && (S.editId || S.tab !== 'scripts')) {
-      fab.remove();
-    }
+    // v4.0.0：右下角悬浮「＋」由 #tabs 中央制作 FAB 接管（常驻所有页），这里不再重复创建
   }
 
   function renderBadges() {
@@ -485,11 +477,17 @@
   }
 
   // ---------- 脚本列表 ----------
+  // v4.0.0：分组侧栏按钮（图标 + 名称 + 计数徽章）
+  function catBtn(k, e, n, cnt) {
+    return '<button class="catitem' + (S.cat === k ? ' on' : '') + '" data-act="cat" data-cat="' + esc(k) + '">'
+      + '<span class="ce">' + e + '</span><span class="cn">' + esc(n) + '</span><span class="cc">' + cnt + '</span></button>';
+  }
+
   function viewScripts() {
     if (!S.scripts.length) {
       return heroCard()
         + '<div class="empty"><span class="e">🫠</span>这里空空如也，像我的钱包<br>'
-        + '<span class="tiny">点右下角 ＋ 挑个模板，或去「录制」偷一段操作</span></div>'
+        + '<span class="tiny">点下方 ✦ 挑个模板，或去「录制」偷一段操作</span></div>'
         + hintBox();
     }
     var q = (S.q || '').trim();
@@ -501,22 +499,35 @@
         if ((sc.name || '').indexOf(q) >= 0 || (sc.desc || '').indexOf(q) >= 0) list.push(sc);
       }
     }
-    var h = heroCard();
+    // v4.0.0：分组筛选（cat 是脚本自由字段，空=不分组；「全部」永远在第一位）
+    if (S.cat && S.cat !== 'all') {
+      var byCat = [];
+      for (var c = 0; c < list.length; c++) if (list[c].cat === S.cat) byCat.push(list[c]);
+      list = byCat;
+    }
+    var cats = [];
+    for (var g = 0; g < S.scripts.length; g++) {
+      var cv = S.scripts[g].cat;
+      if (cv && cats.indexOf(cv) < 0) cats.push(cv);
+    }
+    var h = heroCard() + hintBox();
     if (S.scripts.length > 4 || q) {
       h += '<div class="search"><span class="si">🔍</span>'
         + '<input id="q" value="' + esc(S.q || '') + '" placeholder="搜脚本名或备注"></div>';
     }
     if (!list.length) {
-      return h + '<div class="empty"><span class="e">🔍</span>没找到「' + esc(q) + '」<br>'
-        + '<span class="tiny">换个词试试，或者干脆新建一个</span></div>';
+      return h + '<div class="empty"><span class="e">🔍</span>'
+        + (q ? '没找到「' + esc(q) + '」<br><span class="tiny">换个词试试，或者干脆新建一个</span>'
+             : '这个分组还没有脚本<br><span class="tiny">点脚本 → ⋯ → 分组，就能把它挪进来</span>')
+        + '</div>';
     }
-    h += hintBox() + '<div class="list">';
+    var body = '';
     for (var i = 0; i < list.length; i++) {
       var s = list[i];
       var acts = s.actions || [];
       // v3.0.0：高亮按「这条脚本在哪个会话跑」匹配（runs 快照的 id 字段 = 脚本 id）
       var running = (S.st && S.st.runs || []).some(function (r) { return r.id === s.id; });
-      h += '<div class="item' + (running ? ' run' : '') + '" data-id="' + s.id + '">'
+      body += '<div class="item' + (running ? ' run' : '') + '" data-id="' + s.id + '">'
         + (q ? '' : '<div class="grip" data-drag="' + S.scripts.indexOf(s) + '" data-list="scripts">⋮⋮</div>')
         + '<div class="ic g' + toneCls(s.tone) + '" data-act="pickIcon" data-id="' + s.id + '">' + iconOf(s.icon) + '</div>'
         + '<div class="grow" data-act="edit" data-id="' + s.id + '">'
@@ -533,7 +544,20 @@
         + '<button class="btn sm ghost" data-act="more" data-id="' + s.id + '">⋯</button>'
         + '</div></div>';
     }
-    return h + '</div><div class="row" style="margin:12px 2px 0">'
+    // v4.0.0：有自定义分组（cat 字段）才出侧栏，没有就不占这一列
+    if (cats.length) {
+      h += '<div class="scwrap"><div class="cate">';
+      h += catBtn('all', '🧩', '全部', S.scripts.length);
+      for (var m = 0; m < cats.length; m++) {
+        var cn = 0;
+        for (var n2 = 0; n2 < S.scripts.length; n2++) if (S.scripts[n2].cat === cats[m]) cn++;
+        h += catBtn(cats[m], '🗂', cats[m], cn);
+      }
+      h += '</div><div class="list">' + body + '</div></div>';
+    } else {
+      h += '<div class="list">' + body + '</div>';
+    }
+    return h + '<div class="row" style="margin:12px 2px 0">'
       + '<button class="btn sm ghost grow" data-tab="market">🏪 脚本市场</button>'
       + '<button class="btn sm ghost grow" data-act="import">📥 导入 JSON</button></div>';
   }
@@ -934,6 +958,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.0.0</div><b>液态玻璃整装重设计</b>。整套界面换了视觉底座：<b>深色液态玻璃</b>——半透明材质、顶部高光描边、内外双层光影，背景三团环境光斑把「通透」做足；默认配色换成<b>水色</b>（原来的六种都还在，「我的 → 设置」随便换）。底部导航正中多了 <b>✦ 制作</b>键，任何页面一步直达「挑模板」新建，原来右下角的小加号退休。脚本库支持<b>分组</b>：脚本 → ⋯ → 分组/移动，起个组名（挂机、签到随你），列表左侧会出现<b>分组侧栏</b>，点组名即筛、带计数徽章。主页面之间支持<b>左右滑动切换</b>（弹层开着时不抢手势，纵向滚动不受影响）。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v3.2.0</div><b>权限强引导 + 主流手机适配</b>。有用户反馈「第一次打开没人提醒要开权限」——确实：提醒以前是两行小字，一晃就过去了。现在<b>第一次打开自动弹引导</b>（一步一按钮直达系统设置），主卡下也常驻<b>权限引导卡</b>，没给齐一直显示、给齐自动消失；按手机品牌给出对应的<b>白名单路径</b>（小米要开「后台弹出界面」、华为要改「应用启动管理」、OPPO/vivo 要放电池限制——不开放着权限浮层也拉不出来）。顺手修两处：部分手机回收无障碍服务后界面还挂着假「已开」；悬浮窗没授权时脚本跑了但浮层没影、也不说原因——现在会落一条日志明说。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v3.1.0</div><b>伪 OCR + 多任务深化</b>。新增「我的 → <b>文字模板</b>」：截屏框一个字存成字模，动作「<b>找文字(图)</b>」和条件「屏幕上有字模」就能认出屏幕上的这个字并点它——无障碍找不到的字（图片里的、游戏里的）也有办法了；支持<b>多尺度</b>（屏幕上的字大一号小一号也能认）、区域限定与超时轮询，命中坐标照常记进 {{lastX}}/{{lastY}}。新增<b>共享变量</b>：globalSet／globalGet 读写，任何脚本任何字段里直接写 {{g.名字}} 就能互传消息；新增<b>互斥锁</b>：lock／unlock 同名锁全局互斥，「同一时刻只许一个脚本动这个界面」一条动作搞定，锁可重入、带超时，脚本停了锁自动释放。JS 脚本同步支持 gset／gget／glock／gunlock。顺手修：「设置 → 图色识别 → 模板图」里的「截图框一块存模板」按钮因事件撞名一直点不动，本版修复。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v3.0.0</div><b>真·多任务并行</b>来了：最多同时跑 <b>3 条脚本</b>（2 条动作 + 1 条 JS），互不抢场、日志各记各的（#编号 徽标分清是谁写的）。跑第二个脚本不再把第一个踢掉——会话满了会明说「先停一个再跑」；定时触发器撞上满员会跳过这一轮并记条日志，不再抢占。运行大卡升级成<b>会话列表</b>：每条会话带 #编号，单独暂停／停止（JS 会话不支持暂停，老约定）；脚本列表里谁在跑一眼全亮；变量页按会话分组看数。',
@@ -2040,8 +2065,27 @@
       }
       case 'save': saveCurrent(); break;
       case 'more': sheetMore(id); break;
-      case 'del': s = findScript(id); S.scripts.splice(S.scripts.indexOf(s), 1); saveScripts(); closeSheet(); S.editId = null; render(); break;
-      case 'dup':
+        // v4.0.0：分组筛选与移动（cat 是脚本自由字段）
+        case 'cat': S.cat = el.dataset.cat || 'all'; render(); break;
+        case 'moveCat': sheetMoveCat(id); break;
+        case 'setCat': {
+          var sc = findScript(id);
+          if (sc) { sc.cat = el.dataset.cat || ''; saveScripts(); }
+          closeSheet(); render();
+          toast(sc && sc.cat ? '已移入「' + sc.cat + '」' : '已移出分组');
+          break;
+        }
+        case 'setCatNew': {
+          var nc = (document.getElementById('ncat') || {}).value || '';
+          nc = nc.trim();
+          if (!nc) { toast('先填个分组名'); break; }
+          var sn = findScript(id);
+          if (sn) { sn.cat = nc; saveScripts(); }
+          closeSheet(); render();
+          toast('已移入新分组「' + nc + '」');
+          break;
+        }
+      case 'del': s = findScript(id); S.scripts.splice(S.scripts.indexOf(s), 1); saveScripts(); closeSheet(); S.editId = null; render(); break;      case 'dup':
         s = findScript(id);
         var c = JSON.parse(JSON.stringify(s));
         c.id = uid(); c.name = s.name + ' 副本';
@@ -2487,11 +2531,30 @@
     sheet('<h3>' + esc(s.name) + '</h3>'
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="edit" data-id="' + id + '">✎ 编辑动作</button>'
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="dup" data-id="' + id + '">⧉ 复制一份</button>'
+      + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="moveCat" data-id="' + id + '">🗂 分组 / 移动</button>'
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="export" data-id="' + id + '">📤 导出 JSON</button>'
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="share" data-id="' + id + '">🔗 生成分享码</button>'
       + '<button class="btn ghost wide" style="margin-bottom:9px" data-act="pickIcon" data-id="' + id + '">🎨 换个图标</button>'
       + '<button class="btn warn wide" style="margin-bottom:9px" data-act="del" data-id="' + id + '">🗑 删除</button>'
       + '<button class="btn wide" data-act="cancelAct">关闭</button>');
+  }
+
+  // v4.0.0：把脚本挪进分组（cat 是脚本自由字段；组列表从现有脚本里收集，不用先建组）
+  function sheetMoveCat(id) {
+    var s = findScript(id);
+    var cats = [];
+    for (var i = 0; i < S.scripts.length; i++) {
+      var c = S.scripts[i].cat;
+      if (c && cats.indexOf(c) < 0) cats.push(c);
+    }
+    var h = '<h3>🗂 分组</h3><div class="muted" style="margin:-6px 0 10px">「' + esc(s.name) + '」放到哪个组？</div>';
+    h += '<button class="btn ghost wide" style="margin-bottom:9px" data-act="setCat" data-id="' + id + '" data-cat="">📋 不分组</button>';
+    for (var j = 0; j < cats.length; j++) {
+      h += '<button class="btn ghost wide" style="margin-bottom:9px" data-act="setCat" data-id="' + id + '" data-cat="' + esc(cats[j]) + '">🗂 ' + esc(cats[j]) + '</button>';
+    }
+    h += '<div class="row" style="margin-top:4px"><input id="ncat" placeholder="新分组名，如：挂机">'
+      + '<button class="btn" data-act="setCatNew" data-id="' + id + '">建</button></div>';
+    sheet(h);
   }
 
   function doExport(id) {
@@ -2598,9 +2661,44 @@
   };
 
   // ---------- 启动 ----------
+  // v4.0.0：主页面左右滑动切页（脚本 → 市场 → 录制 → 我的）。
+  // 编辑页、「我的」子页、弹层开着时不抢手势；横向主导才启动，纵向滚动不受影响
+  function bindSwipe() {
+    var seq = ['scripts', 'market', 'record', 'mine'];
+    var pg = document.getElementById('page');
+    if (!pg) return;
+    var sx = 0, sy = 0, drag = false, hz = false;
+    pg.addEventListener('pointerdown', function (e) {
+      if (S.editId || (S.tab === 'mine' && S.sub)) return;
+      if (!document.getElementById('modal').classList.contains('hidden')) return;
+      sx = e.clientX; sy = e.clientY; drag = true; hz = false;
+    });
+    pg.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!hz) {
+        if (Math.abs(dx) > 28 && Math.abs(dx) > Math.abs(dy) * 1.4) hz = true;
+        else if (Math.abs(dy) > 20) drag = false;
+      }
+    });
+    pg.addEventListener('pointerup', function (e) {
+      if (!drag) return;
+      drag = false;
+      if (!hz) return;
+      var dx = e.clientX - sx, i = seq.indexOf(S.tab);
+      if (i < 0) return;
+      if (dx < -60 && i < seq.length - 1) { S.tab = seq[i + 1]; S.sub = null; render(); }
+      else if (dx > 60 && i > 0) { S.tab = seq[i - 1]; S.sub = null; render(); }
+    });
+  }
+
   function boot() {
     refreshAll();
     loadRec();
+    // v4.0.0：#tabs 中央「✦ 制作」键（index.html 里的 .tb-fab）——任何页面一步直达「挑模板」
+    var tf = document.querySelector('.tb-fab');
+    if (tf) tf.onclick = newScript;
+    bindSwipe();
     // v3.2.0：首启强引导——权限没给齐（含无障碍假死）且没弹过，自动弹一次。
     // 弹的当下就记 guideShown（点遮罩关掉也不会每次启动都打扰），之后靠主卡常驻引导兜底
     var st = S.st || {};
