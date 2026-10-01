@@ -384,6 +384,64 @@
     return h + '</div>';
   }
 
+  // ---------- v3.2.0 权限强引导 ----------
+  // 六家 ROM 的「自启动 / 后台弹出 / 电池优化」藏的位置都不一样，不给路径，
+  // 权限给了一半照样跑不动（MIUI 不给「后台弹出界面」，运行浮层永远拉不起来）。
+  // 按 Build.MANUFACTURER 小写后包含匹配，都没中走通用提示
+  var BRAND_HINTS = [
+    ['xiaomi|redmi|小米|红米|poco', '小米/红米/POCO：安全中心 → 应用管理 → 懒人点击器 → 打开「自启动」；再到 权限管理 里开「显示悬浮窗」和「后台弹出界面」——不开后者，跑起来浮层也拉不出来'],
+    ['huawei|honor|华为|荣耀', '华为/荣耀：设置 → 应用 → 应用启动管理 → 懒人点击器 → 关掉「自动管理」，手动管理三个开关（自启动/关联启动/后台活动）全打开'],
+    ['oppo|oneplus|realme|一加', 'OPPO/一加/realme：设置 → 电池 → 更多设置 → 优化电池使用 里关掉本应用；应用权限里开「悬浮窗」和「自启动」'],
+    ['vivo|iqoo', 'vivo/iQOO：设置 → 电池 → 后台高耗电 里允许本应用；自启动和悬浮窗权限在 设置 → 应用 → 权限管理 里开'],
+    ['samsung|三星', '三星：设置 → 电池 → 后台使用限制，把懒人点击器从「深度睡眠应用」里移出来；悬浮窗权限记得开'],
+    ['meizu|魅族', '魅族：手机管家 → 权限管理 → 自启动允许；悬浮窗在 应用管理 → 权限管理 里开']
+  ];
+  var BRAND_DEFAULT_HINT = '其他手机：把本应用加入电池优化白名单（忽略电池优化）并允许自启动，悬浮窗权限记得开——不然服务会被杀、浮层显示不出来';
+
+  function brandHint(mfr) {
+    mfr = String(mfr || '').toLowerCase();
+    for (var i = 0; i < BRAND_HINTS.length; i++) {
+      var keys = BRAND_HINTS[i][0].split('|');
+      for (var j = 0; j < keys.length; j++) {
+        if (mfr.indexOf(keys[j]) >= 0) return BRAND_HINTS[i][1];
+      }
+    }
+    return BRAND_DEFAULT_HINT;
+  }
+
+  /** 主卡下方的常驻引导卡：权限没给齐（或无障碍假死）就一直显示，给齐自动消失 */
+  function permGuide(st) {
+    st = st || {};
+    var rows = [];
+    if (!st.acc) rows.push('<div class="kv"><span>① 无障碍服务——点击的引擎，不开跑不了</span>'
+      + '<button class="btn sm ok" data-act="acc">去开启</button></div>');
+    if (!st.overlay) rows.push('<div class="kv"><span>② 悬浮窗权限——悬浮球和运行浮层全靠它</span>'
+      + '<button class="btn sm ok" data-act="overlay">去授权</button></div>');
+    // 假死：系统设置里开关是开的（acc），但服务实例没连上（linked）——有的手机会这样，关了重开就好。
+    // linked 字段 v3.2.0 才有，旧数据/旧桩没有这个字段时（undefined）不误报
+    if (st.acc && st.linked === false) rows.push('<div class="kv"><span>⚠️ 无障碍开关是开的，但服务没连上（有的手机会假死）——去系统无障碍把它关掉再开一次</span>'
+      + '<button class="btn sm ok" data-act="acc">去重开</button></div>');
+    if (!rows.length) return '';
+    return '<div class="card" style="margin-top:10px"><div class="sec">🔑 先把权限给齐，脚本才跑得动</div>'
+      + rows.join('')
+      + '<div class="tiny" style="margin-top:8px">' + esc(brandHint(st.manufacturer)) + '</div></div>';
+  }
+
+  /** 首启自动弹的引导层（只弹一次，之后靠主卡常驻引导） */
+  function permGuideSheet() {
+    var st = S.st || {};
+    var h = '<h3>🔑 开工前，先给两个权限</h3>'
+      + '<div class="tiny">懒人点击器靠「无障碍服务」看屏幕、点屏幕，靠「悬浮窗」显示悬浮球和运行浮层。'
+      + '这两个都是系统级权限，只能你亲手去开——点下面按钮直达。</div>';
+    if (!st.acc) h += '<div class="row" style="margin-top:10px"><button class="btn ok grow" data-act="acc">① 开无障碍服务</button></div>'
+      + '<div class="tiny" style="margin-top:6px">跳到系统无障碍列表 → 找到「懒人点击器」→ 打开开关</div>';
+    if (st.acc && st.linked === false) h += '<div class="tiny" style="margin-top:8px">⚠️ 无障碍开着但服务没连上：去系统无障碍把它关掉再开一次</div>';
+    if (!st.overlay) h += '<div class="row" style="margin-top:10px"><button class="btn ok grow" data-act="overlay">② 授权悬浮窗</button></div>'
+      + '<div class="tiny" style="margin-top:6px">在系统页里允许「显示在其他应用上层」</div>';
+    h += '<div class="tiny" style="margin-top:8px">' + esc(brandHint(st.manufacturer)) + '</div>';
+    return h + '<div class="row" style="margin-top:12px"><button class="btn ghost grow" data-act="guideDone">我知道了，去开</button></div>';
+  }
+
   function heroCard() {
     var st = S.st || {};
     var runs = st.runs || [];
@@ -414,7 +472,8 @@
       h += '<button class="btn grow" data-act="runLast">▶ 跑上次那个</button>';
     }
     h += '<button class="btn ghost" data-act="ball">' + (st.ball ? '收起悬浮球' : '呼出悬浮球') + '</button>';
-    return h + '</div></div>';
+    // v3.2.0：权限没给齐时主卡下方常驻引导卡（比小字 hint 醒目得多），给齐自动消失
+    return h + '</div></div>' + permGuide(st);
   }
 
   function hintBox() {
@@ -875,6 +934,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v3.2.0</div><b>权限强引导 + 主流手机适配</b>。有用户反馈「第一次打开没人提醒要开权限」——确实：提醒以前是两行小字，一晃就过去了。现在<b>第一次打开自动弹引导</b>（一步一按钮直达系统设置），主卡下也常驻<b>权限引导卡</b>，没给齐一直显示、给齐自动消失；按手机品牌给出对应的<b>白名单路径</b>（小米要开「后台弹出界面」、华为要改「应用启动管理」、OPPO/vivo 要放电池限制——不开放着权限浮层也拉不出来）。顺手修两处：部分手机回收无障碍服务后界面还挂着假「已开」；悬浮窗没授权时脚本跑了但浮层没影、也不说原因——现在会落一条日志明说。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v3.1.0</div><b>伪 OCR + 多任务深化</b>。新增「我的 → <b>文字模板</b>」：截屏框一个字存成字模，动作「<b>找文字(图)</b>」和条件「屏幕上有字模」就能认出屏幕上的这个字并点它——无障碍找不到的字（图片里的、游戏里的）也有办法了；支持<b>多尺度</b>（屏幕上的字大一号小一号也能认）、区域限定与超时轮询，命中坐标照常记进 {{lastX}}/{{lastY}}。新增<b>共享变量</b>：globalSet／globalGet 读写，任何脚本任何字段里直接写 {{g.名字}} 就能互传消息；新增<b>互斥锁</b>：lock／unlock 同名锁全局互斥，「同一时刻只许一个脚本动这个界面」一条动作搞定，锁可重入、带超时，脚本停了锁自动释放。JS 脚本同步支持 gset／gget／glock／gunlock。顺手修：「设置 → 图色识别 → 模板图」里的「截图框一块存模板」按钮因事件撞名一直点不动，本版修复。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v3.0.0</div><b>真·多任务并行</b>来了：最多同时跑 <b>3 条脚本</b>（2 条动作 + 1 条 JS），互不抢场、日志各记各的（#编号 徽标分清是谁写的）。跑第二个脚本不再把第一个踢掉——会话满了会明说「先停一个再跑」；定时触发器撞上满员会跳过这一轮并记条日志，不再抢占。运行大卡升级成<b>会话列表</b>：每条会话带 #编号，单独暂停／停止（JS 会话不支持暂停，老约定）；脚本列表里谁在跑一眼全亮；变量页按会话分组看数。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v2.7.0</div>多任务基建（还不是真并行，为下版打底）：日志每行带上<b>#编号</b>，标出是第几次跑写的——两脚本交替跑也不串；悬浮条最多能同屏 <b>3 条</b>，各自显示进度和暂停键，JS 脚本也显示真实脚本名了；音量键急停、状态面板改走结构化消息。界面看着变化不大，底下把「正在跑什么」从单例字段换成了可多开的「运行会话」记账。',
@@ -1926,6 +1986,8 @@
     switch (act) {
       case 'acc': ok(call('openAcc')); break;
       case 'overlay': ok(call('openOverlay')); break;
+      // v3.2.0：首启引导层的「我知道了」——只关弹层（guideShown 在弹的当下已记）
+      case 'guideDone': closeSheet(); break;
       case 'ball':
         S.st.ball ? ok(call('hideBall')) : ok(call('showBall'));
         setTimeout(refreshAll, 400);
@@ -2539,6 +2601,14 @@
   function boot() {
     refreshAll();
     loadRec();
+    // v3.2.0：首启强引导——权限没给齐（含无障碍假死）且没弹过，自动弹一次。
+    // 弹的当下就记 guideShown（点遮罩关掉也不会每次启动都打扰），之后靠主卡常驻引导兜底
+    var st = S.st || {};
+    var broken = !st.acc || !st.overlay || (st.acc && st.linked === false);
+    if (S.st && S.prefs && !S.prefs.guideShown && broken) {
+      call('savePrefs', JSON.stringify({ guideShown: true }));
+      sheet(permGuideSheet());
+    }
     setInterval(function () {
       if (S.tab === 'mine' && S.sub === 'log') refreshAll();
     }, 1200);
