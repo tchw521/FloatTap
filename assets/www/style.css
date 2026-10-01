@@ -469,3 +469,17 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
   box-shadow:0 0 0 3px rgba(167,139,250,.18),0 5px 13px rgba(2,10,20,.55),inset 0 1px 0 rgba(255,255,255,.7)}
 @keyframes pinIn{from{transform:translate(-50%,-50%) scale(.3);opacity:0}
   to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+
+/* ===== v4.3.0 录制三态弹层 ===== */
+.rec-dot{width:13px;height:13px;border-radius:50%;flex:none;display:block;
+  background:radial-gradient(circle at 34% 30%,#fecdd3,#fb7185 62%,#e11d48);
+  box-shadow:0 0 0 4px rgba(251,113,133,.20),0 0 14px rgba(244,63,94,.55);
+  animation:recPulse 1.2s ease-in-out infinite}
+@keyframes recPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 4px rgba(251,113,133,.20),0 0 14px rgba(244,63,94,.55)}
+  50%{transform:scale(.78);box-shadow:0 0 0 7px rgba(251,113,133,.10),0 0 8px rgba(244,63,94,.35)}}
+.rec-time{font-size:40px;font-weight:800;letter-spacing:3px;line-height:1.15;margin:10px 0 2px;
+  font-variant-numeric:tabular-nums;color:var(--ink);
+  text-shadow:0 1px 0 rgba(255,255,255,.14),0 8px 22px rgba(0,0,0,.4)}
+.rec-tip b{color:var(--acc);font-size:13px}
+.btn.rec-stop{background:linear-gradient(135deg,#fda4af,#fb7185);color:#3d0714;
+  box-shadow:0 10px 26px rgba(251,113,133,.35), inset 0 1px 0 rgba(255,255,255,.4);font-weight:800}

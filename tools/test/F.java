@@ -168,7 +168,7 @@ public class F {
         // 应用内的「更新日志」曾经停更在 v1.4.0，后面七个版本用户都看不到。
         // 这里钉一条：发新版时必须同步 app.js 里的 CHANGELOG 第一条。
         String top = firstVer(js);
-        ok("应用内更新日志的第一条就是当前版本", "4.2.0".equals(top), "现在是 " + top);
+        ok("应用内更新日志的第一条就是当前版本", "4.3.0".equals(top), "现在是 " + top);
 
         // v4.1.0 坐标指示器 + 防检测偏移：曾是本版主菜，改引擎时别把接线删了——
         // 点击类四兄弟必须亮准星，swipe 必须亮连线，落点必须过 Rnd.offset
@@ -213,6 +213,23 @@ public class F {
                 block(js, js.indexOf("function pvPick")).contains("data-field"));
         ok("swipe 预览画起终点连线（pvSyncLine）", js.contains("function pvSyncLine"));
         ok("打开弹层时补画预览连线", block(js, js.indexOf("function sheet(")).contains("pvSyncLine"));
+
+        // v4.3.0 录制三态弹层：准备 → 录制中（计时+计数轮询）→ 完成落列表。
+        // 三态要同渲染 display 切换（切段状态不丢的老规矩），停止后必须刷新列表，接线少一个就断流
+        ok("录制三态弹层存在（sheetRec）", js.contains("function sheetRec"));
+        ok("弹层两态同渲染（recReady + recRun）", js.contains("recReady") && js.contains("recRun"));
+        ok("录制中计时走表（recTick + recTime）", js.contains("function recTick") && js.contains("recTime"));
+        ok("已记录动作数实时轮询（recPoll 读 recording）",
+                js.contains("function recPoll") && js.contains("jcall('recording')"));
+        ok("弹层接线齐全（recGo / recStopBtn / recCancel）",
+                js.contains("case 'recGo':") && js.contains("case 'recStopBtn':") && js.contains("case 'recCancel':"));
+        ok("停止后刷新录制列表（recStopUi 走 loadRec）",
+                block(js, js.indexOf("function recStopUi")).contains("loadRec"));
+        // 拖拽排序：脚本库与动作时间线的 ⋮⋮ 拖柄早就落地，本版钉住不许再丢
+        ok("拖拽排序核心存在（startDrag/onDrag/endDrag）",
+                js.contains("function startDrag") && js.contains("function onDrag") && js.contains("function endDrag"));
+        ok("动作时间线带拖柄（data-list=acts）", js.contains("data-list=\"acts\""));
+        ok("脚本库带拖柄（data-list=scripts）", js.contains("data-list=\"scripts\""));
 
         System.out.println(fails == 0 ? "  —— 全通过" : "  —— 失败 " + fails + " 项");
         if (fails > 0) System.exit(1);

@@ -986,6 +986,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.3.0</div><b>录制三态弹层</b>。点「⏺ 开始录制」不再直接开跑：先弹一层<b>准备页</b>把话说清楚——点哪里记哪里、顶部录制条能做什么、停止后动作落到哪；点「开始录制」切到<b>录制中</b>：红点脉冲、计时走表、<b>已记录 N 个动作</b>实时跳动（每 2 秒读一次引擎），回 app 也能在弹层里一键停，录完动作立刻落到列表。顺手把<b>拖拽排序</b>补进说明书：脚本库和动作时间线的 <b>⋮⋮</b> 拖柄按住就能上下拖，早就支持，现在有冒烟测试盯着。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.2.0</div><b>弹窗流重做</b>。「加动作」换新面孔：顶部是<b>常用</b>单列大行（点击／滑动／双击／长按／等待／开应用，一步直达），下面「全部动作」按<b>六组</b>排开（点按／手势／查找与识别／流程控制／输入与应用／变量与数据），27 个动作一个不落。动作表单拆成<b>通用 / 高级</b>两段：常用参数在前，跳转步号、识别收窄（描述／id／正则）、区域与超时、重复次数这些收进「高级设置」，不再一屏糊到底。点击类动作的表单顶部多了<b>屏幕预览</b>：直接在缩略屏上点一下就能拾取坐标，指示器跟着落点走，滑动是起点→终点两枚 pin 加连线（右上角「起点／终点」切换拾取目标）；「🎯 屏幕截图取点」照旧在高级设置里，两个入口并存。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.1.0</div><b>坐标指示器 + 防检测偏移</b>。脚本跑起来，屏幕上能「看见」每一步了：点击／双击／随机点亮<b>青色圆形准星</b>、长按亮<b>琥珀方框</b>、滑动亮<b>紫色连线</b>，中心带步骤序号，走到哪亮到哪——指示器浮层不挡任何操作，手指和脚本都照常落在下面的 App（设置里可关）。新增<b>落点偏移</b>：每次点击在 ±N 像素内随机偏一点（默认 5px，0=关），配合原有的动作间隔 ±25% 抖动，连续点击不再走同一条直线，更像人手。两处都在「我的 → 设置 → 指示器与防检测」。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.0.0</div><b>液态玻璃整装重设计</b>。整套界面换了视觉底座：<b>深色液态玻璃</b>——半透明材质、顶部高光描边、内外双层光影，背景三团环境光斑把「通透」做足；默认配色换成<b>水色</b>（原来的六种都还在，「我的 → 设置」随便换）。底部导航正中多了 <b>✦ 制作</b>键，任何页面一步直达「挑模板」新建，原来右下角的小加号退休。脚本库支持<b>分组</b>：脚本 → ⋯ → 分组/移动，起个组名（挂机、签到随你），列表左侧会出现<b>分组侧栏</b>，点组名即筛、带计数徽章。主页面之间支持<b>左右滑动切换</b>（弹层开着时不抢手势，纵向滚动不受影响）。',
@@ -2359,9 +2360,12 @@
         toast('已填入，记得点保存');
         break;
       case 'rec':
-        ok(call((S.st.recording ? 'recStop' : 'recStart')));
-        setTimeout(function () { refreshAll(); loadRec(); }, 400);
+        // v4.3.0：没在录 → 弹三态弹层（准备→录制中）；已在录 → 一键停（最短路径）
+        if (S.st.recording) recStopUi(); else sheetRec();
         break;
+      case 'recGo': recStartUi(); break;        // 弹层「开始录制」
+      case 'recStopBtn': recStopUi(); break;    // 弹层「停止录制」
+      case 'recCancel': closeSheet(); break;    // 弹层取消（cancelAct 会清编辑器状态，这里用不上）
       case 'recRefresh': loadRec(); break;
       case 'recClear': ok(call('clearRecording')); loadRec(); break;
       case 'recDel':
@@ -2780,6 +2784,75 @@
     }
     ok(r);
     return false;
+  }
+
+  // ---------- 录制三态弹层（v4.3.0：准备 → 录制中 → 完成落列表） ----------
+  var recTimer = null, recPollT = null, recSec = 0;
+
+  function sheetRec() {
+    var on = S.st && S.st.recording;   // 录制中回到 app 再点开：直接进「录制中」态
+    sheet('<h3>开始录制</h3>'
+      + '<div id="recReady"' + (on ? ' style="display:none"' : '') + '>'
+      + '<div class="tiny" style="line-height:2;margin:2px 4px 8px">'
+      + '点「开始录制」后回到桌面，去别的 App 随便点：<br>'
+      + '· <b>点哪里记哪里</b>——点击／滑动／长按自动入列<br>'
+      + '· 屏幕顶部的录制条可随时 <b>停止 / 加 2 秒等待 / 撤销上一步</b><br>'
+      + '· 停止后动作自动落到录制页列表，可逐条编辑或存为脚本</div>'
+      + '<div class="row" style="margin-top:14px">'
+      + '<button class="btn ghost grow" data-act="recCancel">取消</button>'
+      + '<button class="btn ok grow" data-act="recGo">⏺ 开始录制</button></div></div>'
+      + '<div id="recRun" style="text-align:center;padding:6px 0 2px;' + (on ? '' : 'display:none') + '">'
+      + '<div style="display:flex;justify-content:center;align-items:center;gap:9px;font-weight:700">'
+      + '<span class="rec-dot"></span>录制中</div>'
+      + '<div class="rec-time" id="recTime">00:00</div>'
+      + '<div class="tiny rec-tip">已记录 <b id="recCnt">' + ((S.rec || []).length) + '</b> 个动作 · 点浮球「■」或下面按钮结束</div>'
+      + '<button class="btn rec-stop wide" style="margin-top:14px" data-act="recStopBtn">■ 停止录制</button></div>');
+    if (on) recRunTimers();
+  }
+
+  function recRunTimers() {
+    recSec = 0;
+    var t = document.getElementById('recTime'); if (t) t.textContent = '00:00';
+    clearInterval(recTimer); clearInterval(recPollT);
+    recTimer = setInterval(recTick, 1000);
+    recPollT = setInterval(recPoll, 2000);
+    recPoll();   // 先拉一次，别让计数空两秒
+  }
+
+  function recTick() {
+    // 弹层被关掉（点遮罩/返回键）就自清，录制本身不受影响
+    if ($('#modal').classList.contains('hidden')) { clearInterval(recTimer); recTimer = null; return; }
+    recSec++;
+    var t = document.getElementById('recTime');
+    if (t) t.textContent = ('0' + Math.floor(recSec / 60)).slice(-2) + ':' + ('0' + recSec % 60).slice(-2);
+  }
+
+  function recPoll() {
+    if ($('#modal').classList.contains('hidden')) { clearInterval(recPollT); recPollT = null; return; }
+    var n = (jcall('recording') || []).length;   // 引擎侧录制中也可实时读
+    var c = document.getElementById('recCnt');
+    if (c && +c.textContent !== n) c.textContent = n;
+  }
+
+  function recStartUi() {
+    ok(call('recStart'));
+    var rd = document.getElementById('recReady'), rr = document.getElementById('recRun');
+    if (rd) rd.style.display = 'none';
+    if (rr) rr.style.display = '';
+    recRunTimers();
+    setTimeout(refreshAll, 400);   // hero 卡切「正在录制…」
+  }
+
+  function recStopUi() {
+    ok(call('recStop'));
+    clearInterval(recTimer); clearInterval(recPollT);
+    recTimer = recPollT = null;
+    closeSheet();
+    setTimeout(function () {
+      refreshAll(); loadRec();   // 列表立刻见到刚录的动作
+      // 引擎侧已弹系统 Toast「录完了，共 N 步」，这里只补下一步指引不重复播报
+      if ((S.rec || []).length) toast('已落到录制页列表，可逐条编辑或存为脚本');
+    }, 500);
   }
 
   function loadRec() {

@@ -102,7 +102,9 @@ const MOCK_SRC = `() => {
         acc: acc, overlay: window.__mockOverlay !== undefined ? !!window.__mockOverlay : true,
         linked: window.__mockLinked !== undefined ? !!window.__mockLinked : acc,
         manufacturer: window.__mockBrand || 'generic',
-        recording: true, touch: true, ball: true, log: logs, screen: { w: 1080, h: 1920 },
+        // v4.3.0：__mockRec 可覆盖录制态（默认 true，录完即收工的旧场景零改动）
+        recording: window.__mockRec !== undefined ? !!window.__mockRec : true,
+        touch: true, ball: true, log: logs, screen: { w: 1080, h: 1920 },
         vars: [{ k: 'n', v: '2' }, { k: 'gap', v: '1000' }],
         varsList: vl, js: !!window.__mockJs,
         runs: runs
