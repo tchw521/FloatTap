@@ -450,6 +450,29 @@
     return h + '<div class="row" style="margin-top:12px"><button class="btn ghost grow" data-act="guideDone">我知道了，去开</button></div>';
   }
 
+  // ---------- v4.4.0 全面重绘：原型对齐的结构件 ----------
+  // 每页标题头（h-title 大标题 + h-sub 副标题，对齐原型 .h-title/.h-sub）
+  function pageHead(t, sub) {
+    return '<div class="phead"><div class="h-title">' + t + '</div><div class="h-sub">' + sub + '</div></div>';
+  }
+  // 权限就绪卡（对齐原型 .perm：齐了才亮，缺权限走 hintBox/warn 引导兜底）
+  function permCard() {
+    var st = S.st || {};
+    if (!(st.acc && st.linked !== false && st.overlay)) return '';
+    return '<div class="perm"><div class="pi">🔓</div>'
+      + '<div><div class="pt">权限全部就绪</div>'
+      + '<div class="pd">无障碍已连接 · 悬浮窗已授权</div></div></div>';
+  }
+  // 预计耗时（粗估：每步按 d 算，repeat 乘上去；只做展示不参与运行）
+  function estSec(s) {
+    var t = (s.startDelay || 0) * 1000, acts = s.actions || [];
+    for (var i = 0; i < acts.length; i++) {
+      var d = acts[i].d || 300, n = acts[i].repeat > 1 ? acts[i].repeat : 1;
+      t += d * n;
+    }
+    return t >= 60000 ? Math.round(t / 6000) / 10 + ' 分钟' : Math.round(t / 100) / 10 + ' 秒';
+  }
+
   function heroCard() {
     var st = S.st || {};
     var runs = st.runs || [];
@@ -501,7 +524,8 @@
 
   function viewScripts() {
     if (!S.scripts.length) {
-      return heroCard()
+      return pageHead('我的脚本', '还没有作品 · 全部离线可用')
+        + heroCard()
         + '<div class="empty"><span class="e">🫠</span>这里空空如也，像我的钱包<br>'
         + '<span class="tiny">点下方 ✦ 挑个模板，或去「录制」偷一段操作</span></div>'
         + hintBox();
@@ -526,7 +550,8 @@
       var cv = S.scripts[g].cat;
       if (cv && cats.indexOf(cv) < 0) cats.push(cv);
     }
-    var h = heroCard() + hintBox();
+    var h = pageHead('我的脚本', S.scripts.length + ' 个脚本 · 全部离线可用')
+      + permCard() + heroCard() + hintBox();
     if (S.scripts.length > 4 || q) {
       h += '<div class="search"><span class="si">🔍</span>'
         + '<input id="q" value="' + esc(S.q || '') + '" placeholder="搜脚本名或备注"></div>';
@@ -544,6 +569,7 @@
       // v3.0.0：高亮按「这条脚本在哪个会话跑」匹配（runs 快照的 id 字段 = 脚本 id）
       var running = (S.st && S.st.runs || []).some(function (r) { return r.id === s.id; });
       body += '<div class="item' + (running ? ' run' : '') + '" data-id="' + s.id + '">'
+        + '<div class="hl"></div>'
         + (q ? '' : '<div class="grip" data-drag="' + S.scripts.indexOf(s) + '" data-list="scripts">⋮⋮</div>')
         + '<div class="ic g' + toneCls(s.tone) + '" data-act="pickIcon" data-id="' + s.id + '">' + iconOf(s.icon) + '</div>'
         + '<div class="grow" data-act="edit" data-id="' + s.id + '">'
@@ -697,7 +723,8 @@
   function viewRecord() {
     var on = S.st && S.st.recording;
     var st = S.st || {};
-    var h = '<div class="hero"><div class="hi">操作录制</div>'
+    var h = pageHead('操作录制', '点哪里记哪里 · 停止后自动落列表')
+      + '<div class="hero"><div class="hi">操作录制</div>'
       + '<div class="ht">' + (on ? '🔴 正在录制…' : '让我看看你怎么点的') + '</div>'
       + '<div class="muted">开启后去别的 App 随便点，屏幕顶部会出现录制条（停止 / 加 2 秒等待 / 撤销上一步）。</div>'
       + '<div class="row" style="margin-top:10px">'
@@ -753,7 +780,8 @@
   }
   function viewMine() {
     var st = S.st || {};
-    var h = '<div class="hero"><div class="hi">我的</div>'
+    var h = pageHead('我的', '懒人点击器 · 液态玻璃')
+      + '<div class="hero"><div class="hi">我的</div>'
       + '<div class="ht">' + (S.scripts.length
         ? S.scripts.length + ' 个脚本待命' + (st.paused ? ' · 已暂停' : st.running ? ' · 正在跑' : '')
         : '一个脚本都还没有') + '</div>'
@@ -774,11 +802,10 @@
 
   // ---------- 脚本市场（整页） ----------
   function viewMarket() {
-    var h = '<div class="hero"><div class="hi">🏪 脚本市场</div>'
-      + '<div class="ht">挑一个装进「脚本」，装完随便改</div></div><div class="list">';
+    var h = pageHead('脚本市场', '本地内置 · 分享码流通，无服务端') + '<div class="list">';
     for (var i = 0; i < MARKET.length; i++) {
       var m = MARKET[i];
-      h += '<div class="item"><div class="ic g' + m.tone + '">' + m.icon + '</div>'
+      h += '<div class="item"><div class="hl"></div><div class="ic g' + m.tone + '">' + m.icon + '</div>'
         + '<div class="grow"><div class="t">' + esc(m.n)
         + (m.mk().kind === 'js' ? '<span class="chip">JS</span>' : '') + '</div>'
         + '<div class="d">' + esc(m.d) + '</div></div>'
@@ -986,6 +1013,7 @@
   // v2.3.0：这份列表以前停更在 v1.4.0——后面发了七个版本，用户点「关于」看到的还是一年前的日志。
   // F.java 里有一条断言盯着第一条是不是当前版本，忘了同步会让单测变红。
   var CHANGELOG = [
+    '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.4.0</div><b>全面重绘 · 对齐液态玻璃原型</b>。五个页面统一换了版式：<b>大标题 + 副标题</b>开头（23px 加粗页头），脚本库多了<b>权限就绪卡</b>（🔓 权限全部就绪 · 无障碍已连接 · 悬浮窗已授权），每张卡片右上角加了<b>柔和高光斑</b>。编辑器大改：<b>圆角返回钮 + 大字脚本名 + 圆形播放键</b>一行排开，下面是<b>统计胶囊</b>（N 个动作 · 预计耗时 · 循环方式，预计耗时按每步延时现场算），底部多了一条<b>动作坞</b>悬浮在 Tab 栏之上——🎥 录制一键去录制页、＋ 添加动作主色宽钮常驻手边。主行动按钮、中央 ✦ 键（带「制作」小标签）全部对齐原型渐变，六套主题跟随变色。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.3.0</div><b>录制三态弹层</b>。点「⏺ 开始录制」不再直接开跑：先弹一层<b>准备页</b>把话说清楚——点哪里记哪里、顶部录制条能做什么、停止后动作落到哪；点「开始录制」切到<b>录制中</b>：红点脉冲、计时走表、<b>已记录 N 个动作</b>实时跳动（每 2 秒读一次引擎），回 app 也能在弹层里一键停，录完动作立刻落到列表。顺手把<b>拖拽排序</b>补进说明书：脚本库和动作时间线的 <b>⋮⋮</b> 拖柄按住就能上下拖，早就支持，现在有冒烟测试盯着。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.2.0</div><b>弹窗流重做</b>。「加动作」换新面孔：顶部是<b>常用</b>单列大行（点击／滑动／双击／长按／等待／开应用，一步直达），下面「全部动作」按<b>六组</b>排开（点按／手势／查找与识别／流程控制／输入与应用／变量与数据），27 个动作一个不落。动作表单拆成<b>通用 / 高级</b>两段：常用参数在前，跳转步号、识别收窄（描述／id／正则）、区域与超时、重复次数这些收进「高级设置」，不再一屏糊到底。点击类动作的表单顶部多了<b>屏幕预览</b>：直接在缩略屏上点一下就能拾取坐标，指示器跟着落点走，滑动是起点→终点两枚 pin 加连线（右上角「起点／终点」切换拾取目标）；「🎯 屏幕截图取点」照旧在高级设置里，两个入口并存。',
     '<div class="tiny" style="margin:8px 0 2px;font-weight:700">v4.1.0</div><b>坐标指示器 + 防检测偏移</b>。脚本跑起来，屏幕上能「看见」每一步了：点击／双击／随机点亮<b>青色圆形准星</b>、长按亮<b>琥珀方框</b>、滑动亮<b>紫色连线</b>，中心带步骤序号，走到哪亮到哪——指示器浮层不挡任何操作，手指和脚本都照常落在下面的 App（设置里可关）。新增<b>落点偏移</b>：每次点击在 ±N 像素内随机偏一点（默认 5px，0=关），配合原有的动作间隔 ±25% 抖动，连续点击不再走同一条直线，更像人手。两处都在「我的 → 设置 → 指示器与防检测」。',
@@ -1387,10 +1415,18 @@
     S.editId = s.id;                       // 进编辑器就认准这个脚本，动作行上的按钮都靠它定位
     if (S.groupIdx != null) return viewGroup(s, S.groupIdx);
     var acts = s.actions || [];
-    var h = '<div class="card"><div class="row">'
-      + '<button class="btn sm ghost" data-act="back">‹ 返回</button>'
+    // v4.4.0 对齐原型：ed-top（圆返回 + 大字标题 + 圆形播放）+ statline 统计胶囊
+    var h = '<div class="ed-top">'
+      + '<div class="bk" data-act="back">‹</div>'
+      + '<input id="sname" class="en" value="' + esc(s.name) + '" placeholder="脚本名">'
+      + '<button class="play" data-act="run" data-id="' + s.id + '">▶</button></div>'
+      + '<div class="statline"><span class="st">' + acts.length + ' 个动作</span>'
+      + '<span class="st">预计 ' + estSec(s) + '</span>'
+      + '<span class="st">' + (s.loop ? '∞ 无限循环' : '跑 ' + (s.loopCount || 1) + ' 遍')
+        + (s.startDelay ? ' · 先等 ' + s.startDelay + 's' : '') + '</span></div>'
+      + '<div class="card"><div class="row">'
       + '<div class="ic g' + toneCls(s.tone) + '" data-act="pickIcon" data-id="' + s.id + '" style="width:34px;height:34px;flex:0 0 34px;font-size:16px">' + iconOf(s.icon) + '</div>'
-      + '<div class="grow"><input id="sname" value="' + esc(s.name) + '" placeholder="脚本名"></div>'
+      + '<div class="grow muted" style="font-size:12.5px">点图标换头像 · 参数改完记得保存</div>'
       + '<button class="btn sm ok" data-act="save">保存</button></div>'
       + '<label class="f" style="margin-top:10px"><span>备注（给自己看的，可留空）</span>'
       + '<input id="sdesc" value="' + esc(s.desc || '') + '" placeholder="比如：每天 9 点签到"></label>'
@@ -1403,10 +1439,7 @@
 
     h += varsCard(s);
 
-    h += '<div class="row" style="margin:0 2px 10px"><div class="grow muted">' + acts.length + ' 个动作'
-      + '<div class="tiny" style="margin-top:2px">跳转填第几步（就是左边那个序号）：0=下一步，−1=收工，−2=重来一轮</div></div>'
-      + '<button class="btn sm ok" data-act="run" data-id="' + s.id + '">▶ 试跑</button>'
-      + '<button class="btn sm ghost" data-act="addAct">＋ 加动作</button></div>';
+    h += '<div class="tiny" style="margin:0 2px 10px">跳转填第几步（动作卡左侧的序号）：0=下一步，−1=收工，−2=重来一轮</div>';
 
     if (!acts.length) {
       h += '<div class="empty"><span class="e">🧩</span>一个动作都没有<br><span class="tiny">点「＋ 加动作」一步步拼出你的流程</span></div>';
@@ -1430,7 +1463,10 @@
         + '<button class="btn sm ghost" data-act="delAct" data-i="' + i + '">✕</button>'
         + '</div></div>';
     }
-    return h + '</div>';
+    // v4.4.0：底部动作坞（对齐原型 .dock：次要 ghost 钮 + 主渐变宽钮），sticky 贴底随列表滚
+    // d2 用 button——旧冒烟按 button[data-act="addAct"] 找它，语义上也该是按钮
+    return h + '</div><div class="dock"><div class="d1" data-tab="record">🎥 录制</div>'
+      + '<button class="d2" data-act="addAct">＋ 添加动作</button></div>';
   }
 
   // ---------- 动作编辑 ----------

@@ -166,7 +166,7 @@ else {
     await clickText('[data-act="cancelAct"]', '取消');
 
     // 5. JS API 文档：三个新函数 + tapText 说明升级
-    await clickText('[data-act="back"]', '返回');
+    await clickText('[data-act="back"]', '‹');
     await clickText('.item [data-act="edit"]', '循环签到');
     await clickText('[data-act="jsApi"]', '能调什么');
     for (const f of ['findText', 'waitText', 'runSub']) await want(f, 'JS API 文档');
@@ -175,7 +175,7 @@ else {
 
     // 6. 空选择兜底：新加一个子脚本动作不选名字，摘要显示「未选」
     await clickText('[data-act="cancelAct"]', '关闭');
-    await clickText('[data-act="back"]', '返回');
+    await clickText('[data-act="back"]', '‹');
     await clickText('.item [data-act="edit"]', '连点器');
     await clickText('[data-act="addAct"]', '加动作');
     await clickText('[data-act="pickType"]', '子脚本');

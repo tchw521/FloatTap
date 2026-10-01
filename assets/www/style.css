@@ -483,3 +483,60 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
 .rec-tip b{color:var(--acc);font-size:13px}
 .btn.rec-stop{background:linear-gradient(135deg,#fda4af,#fb7185);color:#3d0714;
   box-shadow:0 10px 26px rgba(251,113,133,.35), inset 0 1px 0 rgba(255,255,255,.4);font-weight:800}
+
+/* ===== v4.4.0 全面重绘：对齐原型 lazytap-liquid-glass-ui =====
+   原型固定青色系映射到主题变量（--brand/--brand2/--brand3），六主题跟随 */
+/* 页标题头（h-title 23px 大标题 + h-sub 副标题） */
+.phead{margin:10px 2px 4px}
+.h-title{font-size:23px;font-weight:800;letter-spacing:.01em;color:var(--ink)}
+.h-sub{font-size:12.5px;color:var(--sub);margin-top:3px}
+/* 权限就绪卡（对齐原型 .perm） */
+.perm{display:flex;gap:12px;align-items:center;border-radius:16px;padding:13px 16px;margin:0 0 12px;
+  background:linear-gradient(165deg,rgba(52,211,153,.10),rgba(255,255,255,.04));
+  border:1px solid rgba(52,211,153,.28);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  box-shadow:var(--shadow)}
+.perm .pi{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:17px;flex:none;
+  background:linear-gradient(140deg,rgba(52,211,153,.22),rgba(103,232,249,.14));border:1px solid rgba(52,211,153,.35)}
+.perm .pt{font-size:13px;font-weight:650;color:var(--ink)}
+.perm .pd{font-size:11.5px;color:var(--sub);margin-top:2px}
+/* 卡片右上角高光斑（对齐原型 .hl） */
+.item,.card{position:relative;overflow:hidden}
+.item .hl,.card .hl{position:absolute;right:-30px;top:-46px;width:120px;height:120px;border-radius:50%;
+  background:radial-gradient(circle,rgba(125,211,252,.15),transparent 70%);pointer-events:none}
+/* 编辑页头部（圆返回 + 大字标题 + 圆形播放钮） */
+.ed-top{display:flex;align-items:center;gap:11px;margin:8px 0 4px}
+.ed-top .bk{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;font-size:15px;cursor:pointer;flex:none;
+  border:1px solid var(--stroke);background:var(--glass);color:var(--sub)}
+.ed-top .bk:active{transform:scale(.92)}
+.ed-top .en{flex:1;min-width:0;font-size:19px;font-weight:750;color:var(--ink);
+  background:none;border:none;outline:none;padding:0;font-family:inherit}
+.ed-top .play{width:42px;height:42px;border-radius:50%;border:none;cursor:pointer;font-size:16px;color:#05242b;flex:none;
+  background:linear-gradient(135deg,var(--brand3),var(--brand2));
+  box-shadow:0 8px 22px rgba(var(--glow),.4), inset 0 1px 0 rgba(255,255,255,.6)}
+.ed-top .play:active{transform:scale(.9)}
+/* 统计胶囊行 */
+.statline{display:flex;gap:7px;margin:10px 0 13px;flex-wrap:wrap}
+.statline .st{font-size:11.5px;padding:5px 12px;border-radius:999px;color:var(--sub);
+  border:1px solid var(--line);background:var(--glass3);white-space:nowrap}
+/* 编辑页底部动作坞（悬浮于 Tab 栏之上：ghost 次钮 + 主渐变宽钮）
+   用 sticky 而非 fixed——#page 的 swap 转场动画保持帧带 transform，
+   会让 fixed 退化成相对滚动容器定位，dock 就飞到内容末尾去了 */
+.dock{position:sticky;bottom:82px;z-index:15;border-radius:24px;padding:10px;display:flex;gap:9px;
+  background:linear-gradient(170deg,rgba(30,38,58,.88),rgba(14,19,32,.9));
+  backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8);
+  border:1px solid var(--stroke);
+  box-shadow:0 22px 60px rgba(2,4,10,.55), inset 0 1px 0 rgba(255,255,255,.2)}
+.dock .d1{flex:1;border-radius:19px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:700;cursor:pointer;
+  border:1px solid var(--stroke);background:var(--glass2);color:var(--ink);padding:13px 0}
+.dock .d1:active{transform:scale(.96)}
+.dock .d2{flex:1.35;border:none;border-radius:19px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:800;cursor:pointer;color:#05242b;font-family:inherit;
+  background:linear-gradient(135deg,var(--brand3),var(--brand2) 60%,var(--brand2));
+  box-shadow:0 10px 26px rgba(var(--glow),.35), inset 0 1px 0 rgba(255,255,255,.55)}
+.dock .d2:active{transform:scale(.96)}
+/* 主行动按钮对齐原型 main 渐变（主题色） */
+.btn.ok{background:linear-gradient(135deg,var(--brand3),var(--brand2) 55%);color:#04222a;
+  box-shadow:0 10px 26px rgba(var(--glow),.35), inset 0 1px 0 rgba(255,255,255,.6)}
+/* 中央制作键下方「制作」小标签（对齐原型 ::after） */
+.tb-fab::after{content:"制作";position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);
+  font-size:10.5px;color:var(--sub);font-weight:600;white-space:nowrap}

@@ -179,7 +179,7 @@ const { MOCK_IIFE } = require('./mock.js');
   await wait(500);
   await shot('22-picked');
   await clickText('[data-act="cancelAct"]', '取消');
-  await clickText('[data-act="back"]', '返回');
+  await clickText('[data-act="back"]', '‹');
 
   await goTab('关于');
   await shot('23-about');
@@ -198,7 +198,7 @@ const { MOCK_IIFE } = require('./mock.js');
   await clickText('.item [data-act="edit"]', '跳广告');
   await shot('26-tablet-editor');
   await page.setViewport({ width: 844, height: 390, deviceScaleFactor: 1 });
-  await clickText('[data-act="back"]', '返回');
+  await clickText('[data-act="back"]', '‹');
   await shot('27-landscape-scripts');
 
   // ---------- v1.7.0：JS 脚本模式 ----------
@@ -251,7 +251,7 @@ const { MOCK_IIFE } = require('./mock.js');
   await clickText('[data-act="runJs"]', '跑脚本');
   await wait(420);
   await shot('34-js-run');
-  await clickText('[data-act="back"]', '返回');
+  await clickText('[data-act="back"]', '‹');
 
   // ---------- v1.8.0：分享码与脚本市场 ----------
   if (!(await has('脚本市场'))) errs.push('脚本页缺少「🏪 脚本市场」入口');

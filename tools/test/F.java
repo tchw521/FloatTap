@@ -168,7 +168,7 @@ public class F {
         // 应用内的「更新日志」曾经停更在 v1.4.0，后面七个版本用户都看不到。
         // 这里钉一条：发新版时必须同步 app.js 里的 CHANGELOG 第一条。
         String top = firstVer(js);
-        ok("应用内更新日志的第一条就是当前版本", "4.3.0".equals(top), "现在是 " + top);
+        ok("应用内更新日志的第一条就是当前版本", "4.4.0".equals(top), "现在是 " + top);
 
         // v4.1.0 坐标指示器 + 防检测偏移：曾是本版主菜，改引擎时别把接线删了——
         // 点击类四兄弟必须亮准星，swipe 必须亮连线，落点必须过 Rnd.offset
@@ -230,6 +230,18 @@ public class F {
                 js.contains("function startDrag") && js.contains("function onDrag") && js.contains("function endDrag"));
         ok("动作时间线带拖柄（data-list=acts）", js.contains("data-list=\"acts\""));
         ok("脚本库带拖柄（data-list=scripts）", js.contains("data-list=\"scripts\""));
+
+        // v4.4.0 全面重绘：五页版式对齐液态玻璃原型（标题头/就绪卡/统计胶囊/动作坞/高光斑）。
+        // 结构件少一个版式就缺角，重绘时别把功能字段（sname/save/run/addAct）弄丢
+        ok("页标题头（pageHead + h-title）", js.contains("function pageHead") && js.contains("h-title"));
+        ok("权限就绪卡（permCard）", js.contains("function permCard") && js.contains("权限全部就绪"));
+        ok("预计耗时（estSec 现场粗估）", js.contains("function estSec"));
+        ok("编辑器头部（ed-top 圆返回 + 大字名 + 圆播放）",
+                js.contains("class=\"ed-top\"") && js.contains("class=\"play\"") && js.contains("id=\"sname\""));
+        ok("统计胶囊（statline）", js.contains("statline"));
+        ok("底部动作坞（d1 录制 + d2 加动作）",
+                js.contains("class=\"dock\"") && js.contains("data-tab=\"record\"") && js.contains("data-act=\"addAct\""));
+        ok("卡片高光斑（hl 注入）", js.contains("class=\"hl\""));
 
         System.out.println(fails == 0 ? "  —— 全通过" : "  —— 失败 " + fails + " 项");
         if (fails > 0) System.exit(1);

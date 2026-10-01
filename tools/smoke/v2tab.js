@@ -62,7 +62,7 @@ fs.mkdirSync(OUT, { recursive: true });
 
   // 3. 市场整页
   await tab('市场');
-  await want('挑一个装进', '市场页');
+  await want('本地内置', '市场页');
   await shot('02-tab-market');
   const nBefore = await page.evaluate(() => JSON.parse(window.app.scripts()).length);
   await clickText('.item .btn', '装');
@@ -99,7 +99,7 @@ fs.mkdirSync(OUT, { recursive: true });
   // 7. 脚本页底部的市场按钮要能切过去
   await tab('脚本');
   await clickText('.row .btn', '脚本市场');
-  await want('挑一个装进', '脚本页→市场');
+  await want('本地内置', '脚本页→市场');
   await shot('07-scripts-to-market');
 
   // 8. 深色模式下的 4 Tab
